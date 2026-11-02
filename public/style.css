@@ -188,8 +188,9 @@ dialog::backdrop { background: rgb(20 10 5 / 45%); }
     --r-face: #e8c4a0; --r-hat: #f3f3f3; --r-line: rgb(0 0 0 / 35%);
   }
 }
-.room-card { padding: 8px; overflow: hidden; }
+.room-card { padding: 0; overflow: hidden; background: #fbe5ce; }
 .room-svg { display: block; width: 100%; height: auto; max-height: calc(100vh - 220px); font-family: inherit; }
+.room-bg { pointer-events: none; }
 .room-svg polygon { stroke: var(--r-line); stroke-width: .6; stroke-linejoin: round; }
 .r-floor { fill: var(--r-floor); }
 .r-tile { fill: var(--r-tile); stroke: none !important; }
@@ -228,6 +229,8 @@ dialog::backdrop { background: rgb(20 10 5 / 45%); }
 .r-flag:not(.up) rect + rect { transform: rotate(90deg); transform-origin: 1.5px 16px; }
 .r-clickable, [data-go] { cursor: pointer; }
 .r-clickable:hover polygon { filter: brightness(1.06); }
+.r-hit { fill: transparent; }
+.r-hit:hover { fill: rgb(194 65 12 / 12%); }
 
 .r-staff { cursor: pointer; outline: none; }
 .r-shadow { fill: rgb(0 0 0 / 18%); }
@@ -235,7 +238,7 @@ dialog::backdrop { background: rgb(20 10 5 / 45%); }
 .r-face { fill: var(--r-face); }
 .r-eye { fill: #2b1d14; }
 .r-hat { fill: var(--r-hat); stroke: rgb(0 0 0 / 12%); stroke-width: .6; }
-.r-name { cursor: pointer; font-size: 11px; font-weight: 700; fill: var(--text); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.r-name { cursor: pointer; font-size: 11px; font-weight: 700; fill: #2b1d14; paint-order: stroke; stroke: #fffaf3; stroke-width: 4px; }
 .r-batt { fill: var(--surface); stroke: var(--muted); stroke-width: 1; }
 .r-batt-fill { fill: var(--ok); } .r-batt-fill.mid { fill: var(--warn); } .r-batt-fill.low { fill: var(--bad); }
 .r-bubble-emoji { font-size: 16px; text-anchor: middle; }
@@ -285,7 +288,7 @@ form.view > label > input, form.view > label > select { display: block; width: 1
 @media (orientation: landscape) and (max-height: 560px) {
   .topbar { position: static; padding-top: 6px !important; padding-bottom: 6px; }
   main { padding-top: 8px; }
-  .room-card { padding: 4px; }
+  .room-card { padding: 0; }
   .room-svg { max-height: none; min-width: 0; }
   .legend { font-size: 12px; }
 }
