@@ -4,6 +4,26 @@ const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+// http(s):// or www. links, minus trailing punctuation like "." or "）" that ends a sentence.
+const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]+/gi;
+const trimUrl = (u) => u.replace(/[.,;:!?'")\]}>，。！？、）」』]+$/, "");
+const hrefOf = (u) => (/^www\./i.test(u) ? "https://" + u : u);
+const linkHtml = (u) => `<a href="${esc(hrefOf(u))}" target="_blank" rel="noopener noreferrer">${esc(u)}</a>`;
+
+// Escaped text with its links made clickable.
+function linkify(s) {
+  const text = String(s ?? "");
+  let out = "", last = 0;
+  for (const m of text.matchAll(URL_RE)) {
+    const url = trimUrl(m[0]);
+    out += esc(text.slice(last, m.index)) + linkHtml(url);
+    last = m.index + url.length;
+  }
+  return out + esc(text.slice(last));
+}
+
+const urlsIn = (s) => [...new Set([...String(s ?? "").matchAll(URL_RE)].map((m) => trimUrl(m[0])))];
+
 const STATUSES = [
   ["todo", "To do"],
   ["doing", "In progress"],
@@ -328,6 +348,7 @@ function openTask(id) {
     <form id="task-form" class="view">
       <input name="title" value="${esc(t.title)}" maxlength="200">
       <textarea name="detail" rows="4" placeholder="Details">${esc(t.detail)}</textarea>
+      ${urlsIn(t.detail).length ? `<div class="links small-text">🔗 ${urlsIn(t.detail).map(linkHtml).join("")}</div>` : ""}
       <div class="row">
         <label>Status <select name="status">${STATUSES.map(([k, l]) => `<option value="${k}"${k === t.status ? " selected" : ""}>${l}</option>`).join("")}</select></label>
         <label>Staff <select name="assignee"><option value="">Unclaimed</option>${S.staff.map((s) => `<option value="${esc(s.name)}"${s.id === t.assignee_id ? " selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>
@@ -553,7 +574,7 @@ function msgHtml(m) {
   const photo = m.photo_id
     ? `<a href="/api/attachments/${m.photo_id}" target="_blank" rel="noopener"><img class="chat-photo" src="/api/attachments/${m.photo_id}" alt="Photo from ${esc(m.author)}" loading="lazy"></a>`
     : "";
-  const text = m.photo_id && m.body === PHOTO_ONLY ? "" : `<div class="caption">${esc(m.body)}</div>`;
+  const text = m.photo_id && m.body === PHOTO_ONLY ? "" : `<div class="caption">${linkify(m.body)}</div>`;
   return `<div class="msg${me ? " me" : ""}"><div class="who">${esc(me ? "You" : m.author)} · ${ago(m.created_at)}</div><div class="bubble">${photo}${text}</div></div>`;
 }
 
