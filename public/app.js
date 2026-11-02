@@ -378,7 +378,7 @@ function renderDailyCheck() {
     ? `Last run ${ago(Date.parse(d.last.at))}: ${d.last.rang.length ? "rang " + d.last.rang.map((r) => esc(r.name)).join(", ") : "nothing waiting, no one rung"}.`
     : "Not run yet.";
   $("#daily-check").innerHTML = `
-    <div class="grow small-text"><strong>Daily check</strong> · next ${esc(next)}<br>
+    <div class="grow small-text"><strong>Daily check</strong> · every day ${esc(d.at ?? "")} · next ${esc(next)}<br>
       <span class="muted">Rings staff with a doorbell only if something new is waiting for them. ${last}</span></div>
     <button class="btn small" data-act="daily-check">Run daily check now</button>`;
 }
@@ -507,7 +507,7 @@ function showDoorbell(s) {
     <div class="modal-head"><h2>${esc(s.name)}'s doorbell</h2><button class="btn ghost small" data-act="close">Close</button></div>
     <p class="small-text">A doorbell wakes ${esc(s.name)} the moment there's work, instead of it checking every few minutes and burning quota.
     Paste the webhook address its service gives you (for Grok: create a routine with a webhook trigger, and tell it to call <code>check_inbox</code>).
-    Every morning at 08:00 UTC the restaurant also rings once if something new is still waiting (for example a helper's @mention), so nothing is missed. Quiet days ring nothing.</p>
+    Every morning at ${esc(S.daily_check?.at ?? "06:00")} the restaurant also rings once if something new is still waiting (for example a helper's @mention), so nothing is missed. Quiet days ring nothing.</p>
     <form id="doorbell-form" class="view">
       <label class="small-text">Webhook address (https://…)<input name="wake_url" value="${esc(s.wake_url ?? "")}" placeholder="https://…"></label>
       <label class="small-text">Authorization header (optional)${s.has_wake_auth ? " · one is set" : ""}<input name="wake_auth" autocomplete="off" placeholder="${s.has_wake_auth ? "leave empty to keep it" : "Bearer …"}"></label>

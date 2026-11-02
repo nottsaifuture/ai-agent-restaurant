@@ -74,14 +74,40 @@ const SESSION_MS = 30 * 24 * 3600 * 1000;
 const DAY = 24 * 3600 * 1000;
 const LOGIN_FAILS_PER_15_MIN = 5;
 const LOGIN_FAILS_PER_DAY = 20;
-// Daily backup check: 08:00 UTC (8am in UK winter, 9am in summer).
-const DAILY_CHECK_HOUR_UTC = 8;
+// Daily backup check: local wall-clock time in a time zone, so it follows summer time.
+// Set with DAILY_CHECK_TIME and DAILY_CHECK_TZ in wrangler.jsonc.
+type DailySchedule = { h: number; m: number; tz: string; label: string };
 
-function nextDailyCheck(t = now()): number {
-  const d = new Date(t);
-  d.setUTCHours(DAILY_CHECK_HOUR_UTC, 0, 0, 0);
-  if (d.getTime() <= t) d.setUTCDate(d.getUTCDate() + 1);
-  return d.getTime();
+function dailySchedule(env: Env): DailySchedule {
+  const [, h, m] = /^(\d{1,2}):(\d{2})$/.exec(env.DAILY_CHECK_TIME ?? "") ?? [, "6", "00"];
+  let tz = env.DAILY_CHECK_TZ || "UTC";
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+  } catch {
+    tz = "UTC";
+  }
+  const hh = Math.min(Number(h), 23), mm = Math.min(Number(m), 59);
+  return { h: hh, m: mm, tz, label: `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} ${tz}` };
+}
+
+// How far the time zone's clock is ahead of UTC at moment t.
+function tzOffset(t: number, tz: string): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
+      .formatToParts(t)
+      .map((x) => [x.type, Number(x.value)]),
+  );
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(t / 1000) * 1000;
+}
+
+function nextDailyCheck(s: DailySchedule, t = now()): number {
+  const wall = new Date(t + tzOffset(t, s.tz));
+  wall.setUTCHours(s.h, s.m, 0, 0);
+  for (;;) {
+    const at = wall.getTime() - tzOffset(wall.getTime() - tzOffset(t, s.tz), s.tz);
+    if (at > t) return at;
+    wall.setUTCDate(wall.getUTCDate() + 1);
+  }
 }
 
 const SCHEMA = [
@@ -216,8 +242,11 @@ export class Restaurant extends DurableObject<Env> {
       } catch {}
     }
     ctx.blockConcurrencyWhile(async () => {
-      if (!this.getMeta("daily_check_due")) {
-        this.setMeta("daily_check_due", nextDailyCheck());
+      // Reschedule on first start, or when the daily check time was changed in the config.
+      const daily = dailySchedule(env);
+      if (!this.getMeta("daily_check_due") || this.getMeta("daily_check_at") !== daily.label) {
+        this.setMeta("daily_check_at", daily.label);
+        this.setMeta("daily_check_due", nextDailyCheck(daily));
         await this.scheduleAlarm();
       }
     });
@@ -417,6 +446,7 @@ export class Restaurant extends DurableObject<Env> {
       },
       wrong_passwords_24h: this.one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE at>?", now() - DAY)?.n ?? 0,
       daily_check: {
+        at: dailySchedule(this.env).label,
         next_at: Number(this.getMeta("daily_check_due")) || null,
         last: JSON.parse(this.getMeta("daily_check_last") ?? "null"),
       },
@@ -1093,7 +1123,7 @@ export class Restaurant extends DurableObject<Env> {
     }
     const dailyDue = Number(this.getMeta("daily_check_due"));
     if (dailyDue && dailyDue <= now()) {
-      this.setMeta("daily_check_due", nextDailyCheck());
+      this.setMeta("daily_check_due", nextDailyCheck(dailySchedule(this.env)));
       await this.dailyCheck().catch((e) => console.error("daily check", e));
     }
     const due = this.all<{ id: number; staff_id: number; reason: string; attempts: number }>(

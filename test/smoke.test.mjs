@@ -451,6 +451,9 @@ test("daily check rings only staff with something new, like a helper's @mention"
   assert.ok(!after.data.rang.some((r) => r.name === helper.name), "once checked in, no more rings");
   const state = await api("state");
   assert.ok(state.data.daily_check.next_at > Date.now(), "next daily check is scheduled");
+  assert.equal(state.data.daily_check.at, "06:00 Europe/London");
+  const london = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "2-digit", minute: "2-digit" });
+  assert.equal(london.format(state.data.daily_check.next_at), "06:00", "runs at 6am London time");
   assert.equal(state.data.daily_check.last.rang.length, after.data.rang.length);
   await api(`staff/${temp.data.staff.id}`, { method: "DELETE" });
 });

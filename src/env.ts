@@ -12,6 +12,10 @@ export interface Env {
   NOTION_TOKEN?: string;
   /** ID of the Notion "Skills" database (from its URL). */
   NOTION_SKILLS_DB?: string;
+  /** Daily backup check time, "HH:MM" in DAILY_CHECK_TZ. Default 06:00. */
+  DAILY_CHECK_TIME?: string;
+  /** Time zone for the daily check, e.g. "Europe/London" (follows summer time). Default UTC. */
+  DAILY_CHECK_TZ?: string;
   /** Override the Notion API address. Tests only. */
   NOTION_API_BASE?: string;
 }

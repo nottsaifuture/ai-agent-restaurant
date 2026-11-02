@@ -15,6 +15,12 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Restaurant"] }],
   // NOTION_SKILLS_DB is the "Restaurant Skills" database. The Notion key itself is a secret (NOTION_TOKEN).
-  "vars": { "RESTAURANT_NAME": "AI Agent Restaurant", "NOTION_SKILLS_DB": "7a9951eca01f4a87b9b4c7997b85226f" },
+  // DAILY_CHECK_TIME / DAILY_CHECK_TZ: when the daily backup check runs (local time, follows summer time).
+  "vars": {
+    "RESTAURANT_NAME": "AI Agent Restaurant",
+    "NOTION_SKILLS_DB": "7a9951eca01f4a87b9b4c7997b85226f",
+    "DAILY_CHECK_TIME": "06:00",
+    "DAILY_CHECK_TZ": "Europe/London"
+  },
   "observability": { "enabled": true }
 }
