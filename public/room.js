@@ -201,33 +201,41 @@ window.Room = (() => {
   const labels = [];
   const add = (y, id, svg) => layers.push({ y, id, svg });
 
+  // Staff are drawn as cha chaan teng waiters: white shirt, black waistcoat,
+  // a bow tie in their own colour, and a steel tray with a cup of milk tea.
+  // The chief wears a red bow tie and a gold pocket square instead.
   function character(st, cx, cy, mood, extra) {
     const hue = [...st.name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
-    const color = `hsl(${hue} 55% 48%)`;
+    const color = `hsl(${hue} 60% 45%)`;
     const chief = st.role === "chief";
-    const hatH = chief ? 20 : 12;
+    const tie = chief ? "#b91c1c" : color;
+    const top = -56; // top of the hair
     const q = st.quota;
     const battery = q == null ? "" :
-      `<g transform="translate(14 -44)"><rect class="r-batt" width="14" height="7" rx="1.5"/><rect class="r-batt-fill ${q < 20 ? "low" : q < 50 ? "mid" : ""}" x="1" y="1" width="${Math.max(1, (12 * q) / 100).toFixed(1)}" height="5" rx="1"/></g>`;
+      `<g transform="translate(-30 -50)"><rect class="r-batt" width="14" height="7" rx="1.5"/><rect class="r-batt-fill ${q < 20 ? "low" : q < 50 ? "mid" : ""}" x="1" y="1" width="${Math.max(1, (12 * q) / 100).toFixed(1)}" height="5" rx="1"/></g>`;
     const bubble = {
-      cook: `<text class="r-bubble-emoji" y="${-58 - hatH}">🍳</text>`,
-      ask: `<g class="r-ask" transform="translate(0 ${-62 - hatH})"><circle r="10"/><text y="5" text-anchor="middle">!</text></g>`,
-      sleep: `<text class="r-zzz" x="10" y="${-50 - hatH}">z z</text>`,
-      ready: `<text class="r-bubble-emoji" y="${-58 - hatH}">🔔</text>`,
-      read: `<text class="r-bubble-emoji" y="${-58 - hatH}">📄</text>`,
+      cook: `<text class="r-bubble-emoji" y="${top - 6}">🍳</text>`,
+      ask: `<g class="r-ask" transform="translate(0 ${top - 12})"><circle r="10"/><text y="5" text-anchor="middle">!</text></g>`,
+      sleep: `<text class="r-zzz" x="12" y="${top - 12}">z z</text>`,
+      ready: `<text class="r-bubble-emoji" y="${top - 6}">🔔</text>`,
+      read: `<text class="r-bubble-emoji" y="${top - 6}">📄</text>`,
       idle: "",
     }[mood];
     const svg = `
-      <g class="r-staff ${mood}" data-staff="${st.id}" transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})" tabindex="0" role="button" aria-label="${escX(st.name)}">
+      <g class="r-staff ${mood}${chief ? " chief" : ""}" data-staff="${st.id}" transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})" tabindex="0" role="button" aria-label="${escX(st.name)}">
         <title>${escX(st.name)}: ${escX(extra)}</title>
         <ellipse class="r-shadow" rx="15" ry="6"/>
         <g class="r-body">
-          <rect x="-11" y="-30" width="22" height="26" rx="9" fill="${color}"/>
-          <rect class="r-apron" x="-7" y="-22" width="14" height="16" rx="3"/>
-          <circle class="r-face" cy="-38" r="10"/>
-          <circle class="r-eye" cx="-3.5" cy="-39" r="1.4"/><circle class="r-eye" cx="3.5" cy="-39" r="1.4"/>
-          <rect class="r-hat" x="-8" y="${-47 - hatH}" width="16" height="${hatH + 1}" rx="2"/>
-          <circle class="r-hat" cx="-6" cy="${-48 - hatH}" r="6"/><circle class="r-hat" cx="0" cy="${-51 - hatH}" r="7"/><circle class="r-hat" cx="6" cy="${-48 - hatH}" r="6"/>
+          ${waiterBody(tie, chief)}
+          <g class="r-tray-arm">
+            <rect class="r-sleeve" x="8" y="-33" width="6" height="11" rx="3" transform="rotate(-35 11 -33)"/>
+            <circle class="r-face" cx="17" cy="-38" r="2.6"/>
+            <ellipse class="r-tray" cx="18" cy="-40" rx="10" ry="2.6"/>
+            <rect class="r-cup" x="14" y="-48" width="8" height="7" rx="1.5"/>
+            <rect class="r-tea" x="15" y="-47.5" width="6" height="2" rx="1"/>
+            <path class="r-cup-handle" d="M22 -46.5 q3 1.5 0 3.5"/>
+          </g>
+          ${waiterHead(false)}
           ${battery}
           ${bubble}
         </g>
@@ -236,6 +244,57 @@ window.Room = (() => {
     // paint-order="stroke" draws the cream outline first so it does not eat the glyphs.
     labels.push(`<text class="r-name" data-staff="${st.id}" x="${cx.toFixed(1)}" y="${(cy + 16).toFixed(1)}" text-anchor="middle" paint-order="stroke">${escX(st.name)}${chief ? " ★" : ""}</text>`);
     add(cy, st.id, svg);
+  }
+
+  // Shirt, waistcoat, bow tie, trousers. Feet at 0,0; shoulders at about y -33.
+  function waiterBody(tie, chief, legs = true) {
+    return `
+          ${legs ? `<rect class="r-trousers" x="-8" y="-13" width="7" height="13" rx="2"/><rect class="r-trousers" x="1" y="-13" width="7" height="13" rx="2"/>
+          <rect class="r-shoe" x="-9" y="-2.5" width="8" height="3" rx="1.5"/><rect class="r-shoe" x="1" y="-2.5" width="8" height="3" rx="1.5"/>` : ""}
+          <rect class="r-sleeve" x="-15" y="-32" width="6" height="15" rx="3"/>
+          <circle class="r-face" cx="-12" cy="-16" r="2.6"/>
+          <rect class="r-shirt" x="-11" y="-34" width="22" height="24" rx="7"/>
+          <path class="r-vest" d="M-11 -26 Q-11 -33 -6 -33.5 L0 -21 L6 -33.5 Q11 -33 11 -26 L11 -13 Q11 -10 8 -10 L-8 -10 Q-11 -10 -11 -13 Z"/>
+          <circle class="r-button" cx="0" cy="-17" r="0.9"/><circle class="r-button" cx="0" cy="-13.5" r="0.9"/>
+          ${chief ? `<rect class="r-pocket gold" x="4" y="-27" width="4" height="2.5" rx=".6"/>` : ""}
+          <path class="r-tie" fill="${tie}" d="M-6 -35.5 L0 -32.5 L-6 -29.5 Z M6 -35.5 L0 -32.5 L6 -29.5 Z"/>
+          <circle class="r-tie" fill="${tie}" cx="0" cy="-32.5" r="1.4"/>`;
+  }
+
+  // Head with neat dark hair. The cashier gets a parted quiff and a bigger smile.
+  function waiterHead(handsome) {
+    const hair = handsome
+      ? `<path class="r-hair" d="M-10.5 -42 Q-12 -55 -2 -57 Q4 -60 9 -56 Q12 -53 10.5 -43 Q9 -49 4 -50 Q-1 -48.5 -4 -51 Q-7 -48 -10.5 -42 Z"/>
+         <path class="r-hair-part" d="M-4 -51 Q-3 -55 1 -57"/>`
+      : `<path class="r-hair" d="M-10.3 -42 Q-11 -54 0 -55 Q11 -54 10.3 -42 Q8 -48 0 -48.5 Q-8 -48 -10.3 -42 Z"/>`;
+    const smile = handsome
+      ? `<path class="r-smile" d="M-4 -38 Q0 -34 4 -38"/>
+         <path class="r-brow" d="M-6 -45 l4 -1"/><path class="r-brow" d="M2 -46 l4 1"/>
+         <circle class="r-blush" cx="-6.5" cy="-38.5" r="1.6"/><circle class="r-blush" cx="6.5" cy="-38.5" r="1.6"/>`
+      : `<path class="r-smile" d="M-2.5 -38 Q0 -36 2.5 -38"/>`;
+    return `
+          <circle class="r-face" cy="-42" r="10"/>
+          <circle class="r-eye" cx="-3.5" cy="-42.5" r="1.4"/><circle class="r-eye" cx="3.5" cy="-42.5" r="1.4"/>
+          ${smile}
+          ${hair}`;
+  }
+
+  // The handsome waiter who looks after the till. He is part of the scenery
+  // (not a staff member), stands behind the cash-register counter so only his
+  // upper body shows, and is drawn behind the bell, its badge and every name.
+  // x 493 sat him in the aisle by the green chair; 460, 258 is behind the till,
+  // above the bell and the approval badge.
+  const CASHIER = { x: 460, y: 258 };
+  function cashier() {
+    return `
+      <g class="r-cashier" transform="translate(${CASHIER.x} ${CASHIER.y}) scale(1.2)" aria-hidden="true">
+        <g class="r-body">
+          <rect class="r-sleeve" x="9" y="-32" width="6" height="15" rx="3"/>
+          <circle class="r-face" cx="12" cy="-16" r="2.6"/>
+          ${waiterBody("#111111", false, false)}
+          ${waiterHead(true)}
+        </g>
+      </g>`;
   }
 
   function hotspot(go, label, x, y, inner, w = 88, h = 88) {
@@ -320,10 +379,10 @@ window.Room = (() => {
       .sort((a, b) => a.y - b.y || (idKey(a.id) < idKey(b.id) ? -1 : idKey(a.id) > idKey(b.id) ? 1 : 0))
       .map((l) => l.svg)
       .join("");
-    el.innerHTML = `<svg class="room-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${VW} ${vh}" role="img" aria-label="Your restaurant">${bg}${hits}${bell}${mailbox}${figures}<g class="r-names">${labels.join("")}</g></svg>`;
+    el.innerHTML = `<svg class="room-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${VW} ${vh}" role="img" aria-label="Your restaurant">${bg}${cashier()}${hits}${bell}${mailbox}${figures}<g class="r-names">${labels.join("")}</g></svg>`;
     if (selectedId != null) el.querySelector(`[data-staff="${selectedId}"]`)?.classList.add("selected");
     return placed;
   }
 
-  return { render, floorSpots, minSep: MIN_SEP, viewBox: { width: VW, height: VH }, obstacles };
+  return { render, cashier: CASHIER, floorSpots, minSep: MIN_SEP, viewBox: { width: VW, height: VH }, obstacles };
 })();
