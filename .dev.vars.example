@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local testing. In production use: npx wrangler secret put OWNER_PASSWORD
+OWNER_PASSWORD=change-me
+# Lets doorbells ring http://localhost addresses while testing. Never set this in production.
+ALLOW_LOCAL_WAKE=true

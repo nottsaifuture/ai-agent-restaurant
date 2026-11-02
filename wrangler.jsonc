@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ai-agent-restaurant",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // The dashboard is static files; /api, /mcp and /hook go to the Worker first.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/mcp", "/mcp/*", "/hook/*"]
+  },
+  // One Durable Object holds the whole restaurant: staff, orders, chat, inbox.
+  "durable_objects": {
+    "bindings": [{ "name": "RESTAURANT", "class_name": "Restaurant" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Restaurant"] }],
+  // NOTION_SKILLS_DB is the "Restaurant Skills" database. The Notion key itself is a secret (NOTION_TOKEN).
+  "vars": { "RESTAURANT_NAME": "AI Agent Restaurant", "NOTION_SKILLS_DB": "7a9951eca01f4a87b9b4c7997b85226f" },
+  "observability": { "enabled": true }
+}

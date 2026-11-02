@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AI Agent Restaurant</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#c2410c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Restaurant">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Sign in -->
+  <section id="login" class="login" hidden>
+    <form id="login-form" class="card login-card">
+      <div class="logo">🍽️</div>
+      <h1>AI Agent Restaurant</h1>
+      <p class="muted">Owner sign-in</p>
+      <input id="login-password" type="password" placeholder="Owner password" autocomplete="current-password" required>
+      <button class="btn primary" type="submit">Open the restaurant</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- App -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="logo-sm">🍽️</span> <span id="restaurant-name">AI Agent Restaurant</span></div>
+      <nav class="tabs" id="tabs">
+        <button data-tab="room">Room</button>
+        <button data-tab="orders">Orders</button>
+        <button data-tab="staff">Staff</button>
+        <button data-tab="inbox">Inbox <span class="badge" id="badge-inbox"></span></button>
+        <button data-tab="chat">Team chat</button>
+        <button data-tab="recipes">Recipe book</button>
+        <button data-tab="approvals">Approvals <span class="badge alert" id="badge-approvals"></span></button>
+        <button data-tab="sources">Sources</button>
+      </nav>
+      <button class="btn ghost small" id="logout">Sign out</button>
+    </header>
+
+    <main>
+      <!-- Room: the restaurant you can see -->
+      <section class="view" data-view="room">
+        <div class="card room-card"><div id="room"></div></div>
+        <div class="card" id="room-info"></div>
+      </section>
+
+      <!-- Orders -->
+      <section class="view" data-view="orders">
+        <form class="card row-form" id="new-order">
+          <input name="title" placeholder="New order, e.g. Compare three flight options" required maxlength="200">
+          <select name="assignee" class="staff-select"><option value="">Anyone / chief decides</option></select>
+          <input name="due" placeholder="Due (optional)" maxlength="40" class="narrow">
+          <label class="btn ghost" title="Add photos">📷 <span id="new-order-photos">Photos</span><input type="file" name="photos" accept="image/*" multiple hidden></label>
+          <button class="btn primary">Add order</button>
+          <textarea name="detail" placeholder="Details: what needs doing, what counts as done (optional)" rows="2"></textarea>
+        </form>
+        <div class="board" id="board"></div>
+      </section>
+
+      <!-- Staff -->
+      <section class="view" data-view="staff">
+        <form class="card row-form" id="hire">
+          <input name="name" placeholder="Name, e.g. Grok" required maxlength="32">
+          <select name="vendor">
+            <option>Grok</option><option>Claude</option><option>Claude Code</option><option>Gemini</option>
+            <option>Meta Muse</option><option>ChatGPT</option><option>Codex</option><option>Other</option>
+          </select>
+          <select name="role"><option value="helper">Helper</option><option value="chief">Chief (leads the team)</option></select>
+          <button class="btn primary">Hire</button>
+        </form>
+        <div class="card row" id="daily-check"></div>
+        <div class="grid" id="staff-list"></div>
+      </section>
+
+      <!-- Inbox -->
+      <section class="view" data-view="inbox">
+        <div class="toolbar"><h2>Notifications</h2><button class="btn small" data-act="read-all">Mark all read</button></div>
+        <div id="events" class="list"></div>
+      </section>
+
+      <!-- Chat -->
+      <section class="view" data-view="chat">
+        <div class="card chat">
+          <div id="chat-log" class="chat-log"></div>
+          <form id="chat-form" class="chat-form">
+            <input name="body" placeholder="Message the team. Write @Name to wake someone." required maxlength="4000" autocomplete="off">
+            <button class="btn primary">Send</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- Recipes -->
+      <section class="view" data-view="recipes">
+        <div class="card toolbar" id="notion-bar"></div>
+        <div class="split">
+          <div class="card" id="recipe-list"></div>
+          <form class="card recipe-editor" id="recipe-form">
+            <input name="title" placeholder="Recipe title, e.g. How we write PRs" required maxlength="120">
+            <textarea name="body" rows="14" placeholder="Notes, rules or how-tos every staff member should read (Markdown is fine)"></textarea>
+            <p class="small-text muted" id="recipe-origin" hidden></p>
+            <div class="row"><button class="btn primary" id="recipe-save">Save recipe</button><button type="button" class="btn ghost" data-act="new-recipe">New</button></div>
+          </form>
+        </div>
+      </section>
+
+      <!-- Approvals -->
+      <section class="view" data-view="approvals">
+        <div id="approvals" class="list"></div>
+      </section>
+
+      <!-- Sources -->
+      <section class="view" data-view="sources">
+        <form class="card row-form" id="new-source">
+          <input name="name" placeholder="Name, e.g. My GitHub" required maxlength="40">
+          <select name="kind"><option value="github">GitHub</option><option value="notion">Notion</option><option value="generic">Other webhook (Herdr, Sentry, scripts…)</option></select>
+          <select name="route_to" class="staff-select"><option value="">Send to the chief</option></select>
+          <button class="btn primary">Add source</button>
+        </form>
+        <div id="sources" class="list"></div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="modal"><div id="modal-body"></div></dialog>
+  <div id="toast" role="status"></div>
+  <script src="/room.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
