@@ -465,6 +465,15 @@ test("letting staff go revokes their key and frees their orders", async () => {
 test("cross-site requests and sign-out", async () => {
   const res = await fetch(BASE + "/api/tasks", { method: "POST", headers: { cookie, origin: "https://evil.example", "content-type": "application/json" }, body: JSON.stringify({ title: "x" }) });
   assert.equal(res.status, 403);
+  assert.equal((await api("state")).data.wrong_passwords_24h, 1, "the owner sees wrong password tries");
   await api("logout", { method: "POST" });
   assert.equal((await api("state")).status, 401);
+});
+
+test("wrong passwords: 5 in 15 minutes pauses sign-in", async () => {
+  // One wrong try already happened in the login test.
+  for (let i = 0; i < 4; i++) assert.equal((await api("login", { method: "POST", body: { password: "guess" + i } })).status, 401);
+  const locked = await api("login", { method: "POST", body: { password: PASSWORD } });
+  assert.equal(locked.status, 429, "even the right password waits while paused");
+  assert.match(locked.data.error, /Wait 15 minutes/);
 });

@@ -139,6 +139,11 @@ function render() {
   const pending = S.approvals.filter((a) => a.status === "pending").length;
   $("#badge-inbox").textContent = unread || "";
   $("#badge-approvals").textContent = pending || "";
+  const wrong = S.wrong_passwords_24h || 0;
+  $("#password-warning").hidden = !wrong;
+  $("#password-warning").textContent = wrong
+    ? `⚠️ ${wrong} wrong password ${wrong === 1 ? "try" : "tries"} in the last 24 hours. If that wasn't you, change to a long password: npx wrangler secret put OWNER_PASSWORD`
+    : "";
   fillStaffSelects();
   ({ room: renderRoom, orders: renderBoard, staff: renderStaff, inbox: renderInbox, chat: renderChat, recipes: renderRecipes, approvals: renderApprovals, sources: renderSources })[tab]?.();
   if (openTaskId && $("#modal").open) {

@@ -72,6 +72,8 @@ const ROLES = ["chief", "helper"];
 const RETRY_SECONDS = [5, 20, 80];
 const SESSION_MS = 30 * 24 * 3600 * 1000;
 const DAY = 24 * 3600 * 1000;
+const LOGIN_FAILS_PER_15_MIN = 5;
+const LOGIN_FAILS_PER_DAY = 20;
 // Daily backup check: 08:00 UTC (8am in UK winter, 9am in summer).
 const DAILY_CHECK_HOUR_UTC = 8;
 
@@ -134,6 +136,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, expires_at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS deliveries (id TEXT PRIMARY KEY, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
+  `CREATE TABLE IF NOT EXISTS login_failures (at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS attachments (
     id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL,
     name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, data BLOB NOT NULL,
@@ -201,7 +204,6 @@ function publicStaff(s: Staff) {
 
 export class Restaurant extends DurableObject<Env> {
   private sql: SqlStorage;
-  private failedLogins: number[] = [];
   private notionSync: Promise<unknown> | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
@@ -371,11 +373,14 @@ export class Restaurant extends DurableObject<Env> {
     const password = this.env.OWNER_PASSWORD;
     if (!password) throw new HttpError(503, "OWNER_PASSWORD is not set. Run: npx wrangler secret put OWNER_PASSWORD");
     const t = now();
-    this.failedLogins = this.failedLogins.filter((x) => t - x < 15 * 60 * 1000);
-    if (this.failedLogins.length >= 10) throw new HttpError(429, "Too many wrong passwords. Wait 15 minutes.");
+    // Wrong tries are saved, so the limits hold even after the restaurant restarts.
+    // Signed-in devices keep working while locked, so a guesser can't lock the owner out of an open dashboard.
+    const fails = (ms: number) => this.one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE at>?", t - ms)?.n ?? 0;
+    if (fails(DAY) >= LOGIN_FAILS_PER_DAY) throw new HttpError(429, "Too many wrong passwords today. Sign-in is paused for up to 24 hours.");
+    if (fails(15 * 60 * 1000) >= LOGIN_FAILS_PER_15_MIN) throw new HttpError(429, "Too many wrong passwords. Wait 15 minutes.");
     const body = await readJson(req);
     if (typeof body.password !== "string" || !safeEqual(body.password, password)) {
-      this.failedLogins.push(t);
+      this.sql.exec("INSERT INTO login_failures (at) VALUES (?)", t);
       throw new HttpError(401, "Wrong password");
     }
     const token = randomToken(32);
@@ -410,6 +415,7 @@ export class Restaurant extends DurableObject<Env> {
         last_result: this.getMeta("notion_last_result"),
         last_error: this.getMeta("notion_last_error"),
       },
+      wrong_passwords_24h: this.one<{ n: number }>("SELECT COUNT(*) n FROM login_failures WHERE at>?", now() - DAY)?.n ?? 0,
       daily_check: {
         next_at: Number(this.getMeta("daily_check_due")) || null,
         last: JSON.parse(this.getMeta("daily_check_last") ?? "null"),
@@ -1111,6 +1117,7 @@ export class Restaurant extends DurableObject<Env> {
     const old = now() - 7 * DAY;
     this.sql.exec("DELETE FROM deliveries WHERE at<?", old);
     this.sql.exec("DELETE FROM sessions WHERE expires_at<?", now());
+    this.sql.exec("DELETE FROM login_failures WHERE at<?", old);
     this.sql.exec("DELETE FROM outbox WHERE status!='pending' AND created_at<?", old);
     await this.scheduleAlarm();
   }
