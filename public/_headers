@@ -3,3 +3,10 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
   X-Frame-Options: DENY
+
+# Room photo. The filename is the cache key (there is no service worker).
+# A new size or crop ships under a new name so browsers do not keep the old file.
+/cha-chaan-teng-1320.jpg
+  Cache-Control: public, max-age=604800
+/cha-chaan-teng-1320.webp
+  Cache-Control: public, max-age=604800

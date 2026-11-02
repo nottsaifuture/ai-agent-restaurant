@@ -213,11 +213,18 @@ $("#room").addEventListener("click", (e) => {
 });
 
 $("#room").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
   const who = e.target.closest("[data-staff]");
-  if (who && (e.key === "Enter" || e.key === " ")) {
+  if (who) {
     e.preventDefault();
     roomSelected = Number(who.dataset.staff);
     renderRoom();
+    return;
+  }
+  const go = e.target.closest("[data-go]");
+  if (go) {
+    e.preventDefault();
+    setTab(go.dataset.go);
   }
 });
 
