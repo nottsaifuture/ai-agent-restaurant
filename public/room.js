@@ -201,15 +201,15 @@ window.Room = (() => {
   const labels = [];
   const add = (y, id, svg) => layers.push({ y, id, svg });
 
-  // Staff are drawn as cha chaan teng waiters: white shirt, black waistcoat,
-  // a bow tie in their own colour, and a steel tray with a cup of milk tea.
-  // The chief wears a red bow tie and a gold pocket square instead.
+  // Everyday cha chaan teng floor staff, not a hotel waiter.
+  // White shirt for the chief, a plain polo in each helper's own hue, dark
+  // trousers, a short waist apron. A pen sits behind the ear. Someone carrying
+  // an order holds a steel tray with a thick milk-tea cup; someone taking an
+  // order holds a chit and a pen. No waistcoat, bow tie, pocket square or jacket.
   function character(st, cx, cy, mood, extra) {
-    const hue = [...st.name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
-    const color = `hsl(${hue} 60% 45%)`;
-    const chief = st.role === "chief";
-    const tie = chief ? "#b91c1c" : color;
+    const kit = uniformOf(st);
     const top = -56; // top of the hair
+    const prop = mood === "cook" || mood === "ready" ? "tray" : mood === "read" || mood === "ask" ? "pad" : "rest";
     const q = st.quota;
     const battery = q == null ? "" :
       `<g transform="translate(-30 -50)"><rect class="r-batt" width="14" height="7" rx="1.5"/><rect class="r-batt-fill ${q < 20 ? "low" : q < 50 ? "mid" : ""}" x="1" y="1" width="${Math.max(1, (12 * q) / 100).toFixed(1)}" height="5" rx="1"/></g>`;
@@ -222,47 +222,124 @@ window.Room = (() => {
       idle: "",
     }[mood];
     const svg = `
-      <g class="r-staff ${mood}${chief ? " chief" : ""}" data-staff="${st.id}" transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})" tabindex="0" role="button" aria-label="${escX(st.name)}">
+      <g class="r-staff ${mood}${kit.chief ? " chief" : ""}" data-staff="${st.id}" transform="translate(${cx.toFixed(1)} ${cy.toFixed(1)})" tabindex="0" role="button" aria-label="${escX(st.name)}">
         <title>${escX(st.name)}: ${escX(extra)}</title>
         <ellipse class="r-shadow" rx="15" ry="6"/>
         <g class="r-body">
-          ${waiterBody(tie, chief)}
-          <g class="r-tray-arm">
-            <rect class="r-sleeve" x="8" y="-33" width="6" height="11" rx="3" transform="rotate(-35 11 -33)"/>
-            <circle class="r-face" cx="17" cy="-38" r="2.6"/>
-            <ellipse class="r-tray" cx="18" cy="-40" rx="10" ry="2.6"/>
-            <rect class="r-cup" x="14" y="-48" width="8" height="7" rx="1.5"/>
-            <rect class="r-tea" x="15" y="-47.5" width="6" height="2" rx="1"/>
-            <path class="r-cup-handle" d="M22 -46.5 q3 1.5 0 3.5"/>
-          </g>
-          ${waiterHead(false)}
+          ${floorBody(kit, { legs: true, prop })}
+          ${staffHead(false)}
+          ${penBehindEar(1)}
           ${battery}
           ${bubble}
         </g>
       </g>`;
     // Names go on a top layer so nobody stands in front of a name.
     // paint-order="stroke" draws the cream outline first so it does not eat the glyphs.
-    labels.push(`<text class="r-name" data-staff="${st.id}" x="${cx.toFixed(1)}" y="${(cy + 16).toFixed(1)}" text-anchor="middle" paint-order="stroke">${escX(st.name)}${chief ? " ★" : ""}</text>`);
+    labels.push(`<text class="r-name" data-staff="${st.id}" x="${cx.toFixed(1)}" y="${(cy + 16).toFixed(1)}" text-anchor="middle" paint-order="stroke">${escX(st.name)}${kit.chief ? " ★" : ""}</text>`);
     add(cy, st.id, svg);
   }
 
-  // Shirt, waistcoat, bow tie, trousers. Feet at 0,0; shoulders at about y -33.
-  function waiterBody(tie, chief, legs = true) {
-    return `
-          ${legs ? `<rect class="r-trousers" x="-8" y="-13" width="7" height="13" rx="2"/><rect class="r-trousers" x="1" y="-13" width="7" height="13" rx="2"/>
-          <rect class="r-shoe" x="-9" y="-2.5" width="8" height="3" rx="1.5"/><rect class="r-shoe" x="1" y="-2.5" width="8" height="3" rx="1.5"/>` : ""}
-          <rect class="r-sleeve" x="-15" y="-32" width="6" height="15" rx="3"/>
-          <circle class="r-face" cx="-12" cy="-16" r="2.6"/>
-          <rect class="r-shirt" x="-11" y="-34" width="22" height="24" rx="7"/>
-          <path class="r-vest" d="M-11 -26 Q-11 -33 -6 -33.5 L0 -21 L6 -33.5 Q11 -33 11 -26 L11 -13 Q11 -10 8 -10 L-8 -10 Q-11 -10 -11 -13 Z"/>
-          <circle class="r-button" cx="0" cy="-17" r="0.9"/><circle class="r-button" cx="0" cy="-13.5" r="0.9"/>
-          ${chief ? `<rect class="r-pocket gold" x="4" y="-27" width="4" height="2.5" rx=".6"/>` : ""}
-          <path class="r-tie" fill="${tie}" d="M-6 -35.5 L0 -32.5 L-6 -29.5 Z M6 -35.5 L0 -32.5 L6 -29.5 Z"/>
-          <circle class="r-tie" fill="${tie}" cx="0" cy="-32.5" r="1.4"/>`;
+  // Chief keeps the classic white short-sleeve shirt plus a plastic name badge.
+  // Helpers wear a simple polo in their own hue (collar a shade darker) so the
+  // floor is easy to tell apart without a suit.
+  function uniformOf(st) {
+    const hue = [...st.name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
+    const chief = st.role === "chief";
+    return {
+      chief,
+      polo: chief ? "#f7f5f0" : `hsl(${hue} 38% 44%)`,
+      collar: chief ? `hsl(${hue} 42% 36%)` : `hsl(${hue} 36% 28%)`,
+    };
   }
 
-  // Head with neat dark hair. The cashier gets a parted quiff and a bigger smile.
-  function waiterHead(handsome) {
+  // Feet at 0,0. Polo covers the chest; the apron hangs from the waist over
+  // dark trousers and stops above the shoes, so it cannot be read as a waistcoat.
+  function floorBody(kit, { legs, prop }) {
+    const { polo, collar, chief } = kit;
+    return `
+          ${legs ? `<rect class="r-trousers" x="-8" y="-14" width="7.2" height="12" rx="2"/><rect class="r-trousers" x="0.8" y="-14" width="7.2" height="12" rx="2"/>
+          <rect class="r-shoe" x="-9" y="-2.6" width="8.2" height="3.1" rx="1.5"/><rect class="r-shoe" x="0.8" y="-2.6" width="8.2" height="3.1" rx="1.5"/>` : ""}
+          ${shortSleeve(polo, collar, -1)}
+          <rect class="r-polo" fill="${polo}" x="-11" y="-34" width="22" height="18.2" rx="3"/>
+          <path class="r-collar" fill="${collar}" d="M-7.2 -32.8 C-4.6 -36.2 4.6 -36.2 7.2 -32.8 L5.2 -31.8 C3.2 -34.2 -3.2 -34.2 -5.2 -31.8 Z"/>
+          <path class="r-collar" fill="${collar}" d="M-2.2 -32.6 L0 -29.2 L2.2 -32.6 Z"/>
+          <circle class="r-button" cx="0" cy="-27.6" r=".65"/><circle class="r-button" cx="0" cy="-25.4" r=".65"/>
+          ${chief ? "" : `<rect class="r-chest-pocket" x="-8.2" y="-30.6" width="5" height="3.4" rx=".45"/>`}
+          ${legs ? `<path class="r-apron" d="M-4.4 -15.4 H4.4 L4.8 -11.4 Q0 -10.6 -4.8 -11.4 Z"/>
+          <rect class="r-apron-band" x="-7.8" y="-16.8" width="15.6" height="2" rx=".6"/>
+          <path class="r-apron-fold" d="M0 -15.2 V-11.2"/>
+          <path class="r-apron-tie" d="M-7.8 -16 q-3.2.4 -3 1.8"/>
+          <path class="r-apron-tie" d="M7.8 -16 q3.2.4 3 1.8"/>` : ""}
+          ${chief ? `<g class="r-badge" transform="translate(2.6 -29.4)"><rect class="r-badge-clip" x="2.2" y="-1.1" width="3.4" height="1.3" rx=".35"/><rect width="8" height="5.4" rx=".6"/><path class="r-badge-line" d="M1.1 1.5 H6.8 M1.1 2.7 H5.4 M1.1 3.9 H3.8"/></g>` : ""}
+          ${prop === "tray" ? trayArm(polo, collar) : prop === "pad" ? padArm(polo, collar) : shortSleeve(polo, collar, 1)}`;
+  }
+
+  // Short sleeve, cuff and a forearm so the hand stays attached. side -1 is the left arm.
+  function shortSleeve(polo, collar, side) {
+    const x = side < 0 ? -16.2 : 9.6;
+    const hand = side < 0 ? -12.9 : 12.9;
+    return `
+          <rect class="r-sleeve" fill="${polo}" x="${x}" y="-33.4" width="6.6" height="8.6" rx="2.2"/>
+          <rect class="r-collar" fill="${collar}" x="${x}" y="-26.2" width="6.6" height="2" rx=".7"/>
+          <rect class="r-face" x="${(hand - 1.45).toFixed(2)}" y="-25.4" width="2.9" height="5.4" rx="1.3"/>
+          <circle class="r-face" cx="${hand}" cy="-19.6" r="2.35"/>`;
+  }
+
+  // Round steel tray, thick white cup, green band, silk-stocking milk tea.
+  function trayArm(polo, collar) {
+    // Sleeve first, tray next, hand last so the fingers sit on the rim.
+    return `
+          <g class="r-tray-arm" transform="translate(6.2 -31.5) rotate(-122)">
+            <rect class="r-sleeve" fill="${polo}" x="-3" y="0" width="6" height="5.2" rx="2"/>
+            <rect class="r-collar" fill="${collar}" x="-3" y="4" width="6" height="1.6" rx=".55"/>
+            <rect class="r-face" x="-1.3" y="4.8" width="2.6" height="2.2" rx="1.1"/>
+          </g>
+          <g class="r-tray-arm">
+            <ellipse class="r-tray" cx="19.4" cy="-36.8" rx="8" ry="2.35"/>
+            <ellipse class="r-tray-shine" cx="17.6" cy="-37.3" rx="4" ry=".8"/>
+            <rect class="r-cup" x="16" y="-45.4" width="7.4" height="8.2" rx="1.9"/>
+            <rect class="r-tea" x="16.9" y="-45" width="5.6" height="1.6" rx=".55"/>
+            <rect class="r-cup-band" x="16" y="-42.6" width="7.4" height="2"/>
+            <path class="r-cup-handle" d="M23.4 -43.2 q2.6 1.6 0 3.4"/>
+          </g>
+          <g class="r-tray-arm" transform="translate(6.2 -31.5) rotate(-122)">
+            <circle class="r-face" cy="8" r="2.25"/>
+          </g>`;
+  }
+
+  // The little order chit and a ballpoint, the other thing a floor staff carries.
+  function padArm(polo, collar) {
+    return `
+          <g class="r-pad-arm" transform="translate(8 -33) rotate(-41)">
+            <rect class="r-sleeve" fill="${polo}" x="-3.1" y="0" width="6.2" height="6" rx="2"/>
+            <rect class="r-collar" fill="${collar}" x="-3.1" y="4.8" width="6.2" height="1.6" rx=".6"/>
+            <rect class="r-face" x="-1.35" y="5.6" width="2.7" height="2.6" rx="1.2"/>
+          </g>
+          <g transform="translate(11.2 -35) rotate(-6)">
+            <rect class="r-pad" width="8" height="10.6" rx=".8"/>
+            <path class="r-pad-line" d="M1.2 2.6 H6.7 M1.2 4.6 H6.7 M1.2 6.6 H4.5"/>
+            <g transform="translate(4.6 2.2) rotate(28)">
+              <rect class="r-pen" x="-.7" y="-1" width="1.4" height="7.2" rx=".35"/>
+              <rect class="r-pen-cap" x="-.7" y="-1" width="1.4" height="1.6" rx=".3"/>
+            </g>
+          </g>
+          <g class="r-pad-arm" transform="translate(8 -33) rotate(-41)">
+            <circle class="r-face" cy="9.2" r="2.3"/>
+          </g>`;
+  }
+
+  // Ballpoint clipped behind the ear, cap sticking up past the hair. side +1 is the figure's right.
+  function penBehindEar(side) {
+    const s = side < 0 ? -1 : 1;
+    return `
+          <g class="r-ear-pen" transform="translate(${(s * 9.4).toFixed(1)} -45.5) rotate(${s * 14})">
+            <rect class="r-pen" x="-.75" y="-8" width="1.55" height="8.4" rx=".4"/>
+            <rect class="r-pen-cap" x="-.75" y="-8" width="1.55" height="2" rx=".35"/>
+          </g>`;
+  }
+
+  // Short dark hair. The cashier keeps the parted quiff and the bigger smile.
+  function staffHead(handsome) {
     const hair = handsome
       ? `<path class="r-hair" d="M-10.5 -42 Q-12 -55 -2 -57 Q4 -60 9 -56 Q12 -53 10.5 -43 Q9 -49 4 -50 Q-1 -48.5 -4 -51 Q-7 -48 -10.5 -42 Z"/>
          <path class="r-hair-part" d="M-4 -51 Q-3 -55 1 -57"/>`
@@ -279,20 +356,20 @@ window.Room = (() => {
           ${hair}`;
   }
 
-  // The handsome waiter who looks after the till. He is part of the scenery
-  // (not a staff member), stands behind the cash-register counter so only his
-  // upper body shows, and is drawn behind the bell, its badge and every name.
+  // The young man at the till. Same casual uniform as the floor (white polo,
+  // pen behind the ear), scenery only: he is not a staff member, takes no
+  // clicks, and is drawn behind the bell, its badge and every name.
   // x 493 sat him in the aisle by the green chair; 460, 258 is behind the till,
-  // above the bell and the approval badge.
+  // above the bell and the approval badge. No apron, so nothing hangs onto the bell.
   const CASHIER = { x: 460, y: 258 };
   function cashier() {
+    const kit = { chief: false, polo: "#f7f5f0", collar: "#1e3a5f" };
     return `
       <g class="r-cashier" transform="translate(${CASHIER.x} ${CASHIER.y}) scale(1.2)" aria-hidden="true">
         <g class="r-body">
-          <rect class="r-sleeve" x="9" y="-32" width="6" height="15" rx="3"/>
-          <circle class="r-face" cx="12" cy="-16" r="2.6"/>
-          ${waiterBody("#111111", false, false)}
-          ${waiterHead(true)}
+          ${floorBody(kit, { legs: false, prop: "rest" })}
+          ${staffHead(true)}
+          ${penBehindEar(-1)}
         </g>
       </g>`;
   }

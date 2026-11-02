@@ -179,6 +179,33 @@ test("the picture declares its box, and the shipped file is the small one", () =
   assert.equal(statSync(new URL("../public/cha-chaan-teng.jpg", import.meta.url), { throwIfNoEntry: false }), undefined);
 });
 
+test("staff wear everyday cha chaan teng kit, not a hotel uniform", () => {
+  const el = mount();
+  Room.render(state([
+    staffMember(1),
+    staffMember(2),
+  ], {
+    tasks: [
+      { id: 1, title: "Tea", status: "doing", assignee_id: 2 },
+      { id: 2, title: "Toast", status: "todo", assignee_id: 1 },
+    ],
+  }), el, null);
+  const svg = el.innerHTML;
+  assert.match(svg, /class="r-polo"/);
+  assert.match(svg, /class="r-apron"/);
+  assert.match(svg, /class="r-tray"/);
+  assert.match(svg, /class="r-cup-band"/);
+  assert.match(svg, /class="r-pad"/);
+  assert.match(svg, /class="r-ear-pen"/);
+  assert.match(svg, /class="r-badge"/);
+  assert.match(svg, /class="r-cashier"[^>]*aria-hidden="true"/);
+  assert.match(svg, /Elon1 ★|Ada1 ★/);
+  assert.doesNotMatch(svg, /r-vest|r-tie|r-pocket|bow tie|waistcoat/);
+  const css = readFileSync(new URL("../public/style.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /\.r-vest|\.r-pocket\.gold|\.r-shirt\b/);
+  assert.match(css, /\.r-cashier\s*\{\s*pointer-events:\s*none/);
+});
+
 test("tap targets are buttons with names, and the photo ignores the pointer", () => {
   const css = readFileSync(new URL("../public/style.css", import.meta.url), "utf8");
   assert.match(css, /\.room-bg\s*\{\s*pointer-events:\s*none/);
