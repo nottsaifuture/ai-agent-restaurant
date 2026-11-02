@@ -195,60 +195,35 @@ dialog::backdrop { background: rgb(20 10 5 / 45%); }
 }
 
 /* ---------- The room ---------- */
-:root {
-  --r-floor: #e9d5b7; --r-plank: #d9c09c; --r-tile: #f4ece0; --r-wall-back: #f3e3cf; --r-wall-side: #ead5bb;
-  --r-wood-top: #b07a4f; --r-wood-l: #95633c; --r-wood-r: #7d5231;
-  --r-steel-top: #d6dbe0; --r-steel-l: #b4bcc4; --r-steel-r: #9aa3ad;
-  --r-face: #f7d7b5; --r-hat: #ffffff; --r-line: rgb(60 30 10 / 25%);
-}
+:root { --r-face: #f7d7b5; --r-hat: #ffffff; --r-cream: #fbe5ce; }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --r-floor: #3a2c20; --r-plank: #33261b; --r-tile: #463729; --r-wall-back: #2e241c; --r-wall-side: #281f18;
-    --r-wood-top: #8a5d3a; --r-wood-l: #6f4a2d; --r-wood-r: #5c3d25;
-    --r-steel-top: #8d969f; --r-steel-l: #707a84; --r-steel-r: #5c656e;
-    --r-face: #e8c4a0; --r-hat: #f3f3f3; --r-line: rgb(0 0 0 / 35%);
-  }
+  :root { --r-face: #e8c4a0; --r-hat: #f3f3f3; --r-cream: #fbe5ce; }
 }
-.room-card { padding: 8px; overflow: hidden; }
-.room-svg { display: block; width: 100%; height: auto; max-height: calc(100vh - 220px); font-family: inherit; }
-.room-svg polygon { stroke: var(--r-line); stroke-width: .6; stroke-linejoin: round; }
-.r-floor { fill: var(--r-floor); }
-.r-tile { fill: var(--r-tile); stroke: none !important; }
-.r-plank { stroke: var(--r-plank); stroke-width: 1; }
-.r-wall-back { fill: var(--r-wall-back); }
-.r-wall-side { fill: var(--r-wall-side); }
-.r-door { fill: var(--r-wood-l); }
-.r-sign rect { fill: var(--accent); }
-.r-sign text { fill: #fff; font-size: 13px; font-weight: 700; letter-spacing: .15em; }
-
-.top.r-counter, .top.r-table, .top.r-shelf, .top.r-host, .top.r-leg, .top.r-post { fill: var(--r-wood-top); }
-.side-l.r-counter, .side-l.r-table, .side-l.r-shelf, .side-l.r-host, .side-l.r-leg, .side-l.r-post { fill: var(--r-wood-l); }
-.side-r.r-counter, .side-r.r-table, .side-r.r-shelf, .side-r.r-host, .side-r.r-leg, .side-r.r-post { fill: var(--r-wood-r); }
-.top.r-stove, .top.r-fridge { fill: var(--r-steel-top); }
-.side-l.r-stove, .side-l.r-fridge { fill: var(--r-steel-l); }
-.side-r.r-stove, .side-r.r-fridge { fill: var(--r-steel-r); }
-.top.r-sofa { fill: #d97757; } .side-l.r-sofa { fill: #bf5f40; } .side-r.r-sofa { fill: #a54e33; }
-.top.r-mailbox { fill: #3b82f6; } .side-l.r-mailbox { fill: #2563eb; } .side-r.r-mailbox { fill: #1d4ed8; }
-
-.r-burner { fill: #4b5563; }
-.r-burner.lit { fill: #f97316; animation: r-flicker 1.2s ease-in-out infinite alternate; }
-.r-steam path { fill: none; stroke: rgb(255 255 255 / 80%); stroke-width: 3; stroke-linecap: round; animation: r-steam 2.4s ease-in-out infinite; }
-.r-steam path + path { animation-delay: 1.2s; }
-.r-plate { fill: #fff; stroke: #d4d4d4; }
-.r-food { fill: #ea580c; }
-.r-ticket { fill: #fffbeb; stroke: #d6c7a1; }
-.r-label { font-size: 11px; font-weight: 700; fill: var(--text); }
-.r-label.on-dark { fill: #fff7ed; font-size: 10px; letter-spacing: .08em; }
+/* Cream shows while the photo is loading and if it fails. */
+.room-card { padding: 0; overflow: hidden; background: var(--r-cream); }
+.room-svg { display: block; width: 100%; height: auto; font-family: inherit; background: var(--r-cream); }
+.room-fallback { fill: var(--r-cream); pointer-events: none; }
+.room-bg { pointer-events: none; }
 .r-bell path, .r-bell rect { fill: #eab308; }
 .r-bell.ringing { animation: r-ring 1s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
-.r-count circle { fill: var(--accent); }
+.r-count { pointer-events: none; }
+.r-count circle, .r-count rect { fill: var(--accent); }
+.r-count.zero circle, .r-count.zero rect { fill: var(--muted); }
 .r-count text { fill: #fff; font-size: 11px; font-weight: 700; }
+.r-count.wide text { font-size: 10px; }
 .r-flag rect { fill: #9ca3af; }
 .r-flag.up rect + rect { fill: #ef4444; }
 .r-flag { transform-box: fill-box; }
 .r-flag:not(.up) rect + rect { transform: rotate(90deg); transform-origin: 1.5px 16px; }
 .r-clickable, [data-go] { cursor: pointer; }
-.r-clickable:hover polygon { filter: brightness(1.06); }
+.r-hit, .r-target { fill: transparent; }
+.r-hit:hover, .r-clickable:hover .r-target { fill: rgb(194 65 12 / 12%); }
+/* Keyboard focus has to be visible on the photo, not only a browser outline. */
+.r-hit:focus-visible, .r-clickable:focus-visible .r-target {
+  fill: rgb(194 65 12 / 18%);
+  stroke: #9a3412;
+  stroke-width: 3;
+}
 
 .r-staff { cursor: pointer; outline: none; }
 .r-shadow { fill: rgb(0 0 0 / 18%); }
@@ -256,7 +231,7 @@ dialog::backdrop { background: rgb(20 10 5 / 45%); }
 .r-face { fill: var(--r-face); }
 .r-eye { fill: #2b1d14; }
 .r-hat { fill: var(--r-hat); stroke: rgb(0 0 0 / 12%); stroke-width: .6; }
-.r-name { cursor: pointer; font-size: 11px; font-weight: 700; fill: var(--text); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.r-name { cursor: pointer; font-size: 11px; font-weight: 700; fill: #2b1d14; paint-order: stroke; stroke: #fffaf3; stroke-width: 4px; stroke-linejoin: round; }
 .r-batt { fill: var(--surface); stroke: var(--muted); stroke-width: 1; }
 .r-batt-fill { fill: var(--ok); } .r-batt-fill.mid { fill: var(--warn); } .r-batt-fill.low { fill: var(--bad); }
 .r-bubble-emoji { font-size: 16px; text-anchor: middle; }
@@ -274,15 +249,15 @@ dialog::backdrop { background: rgb(20 10 5 / 45%); }
 @keyframes r-bob { to { transform: translateY(-2px); } }
 @keyframes r-hop { 0%, 60%, 100% { transform: translateY(0); } 30% { transform: translateY(-5px); } }
 @keyframes r-float { 0%, 100% { transform: translateY(0); opacity: .5; } 50% { transform: translateY(-4px); opacity: 1; } }
-@keyframes r-flicker { to { fill: #fbbf24; } }
-@keyframes r-steam { 0% { opacity: 0; transform: translateY(4px); } 40% { opacity: .9; } 100% { opacity: 0; transform: translateY(-10px); } }
 @keyframes r-ring { 0%, 50%, 100% { transform: rotate(0); } 15% { transform: rotate(-14deg); } 35% { transform: rotate(14deg); } }
 @media (prefers-reduced-motion: reduce) {
   .room-svg * { animation: none !important; }
 }
 @media (max-width: 760px) {
-  .room-card { overflow-x: auto; }
-  .room-svg { min-width: 640px; max-height: none; }
+  /* The whole picture fits the phone. Tap targets are sized for this width. */
+  .view[data-view="room"] { margin: 0 -16px; }
+  .room-card { overflow: hidden; border-radius: 0; border-left: 0; border-right: 0; }
+  .room-svg { min-width: 0; max-height: none; }
 }
 
 /* Photos on orders */
@@ -306,7 +281,7 @@ form.view > label > input, form.view > label > select { display: block; width: 1
 @media (orientation: landscape) and (max-height: 560px) {
   .topbar { position: static; padding-top: 6px !important; padding-bottom: 6px; }
   main { padding-top: 8px; }
-  .room-card { padding: 4px; }
+  .room-card { padding: 0; }
   .room-svg { max-height: none; min-width: 0; }
   .legend { font-size: 12px; }
 }
