@@ -174,6 +174,10 @@ const SCHEMA = [
 const PHOTO_MAX_BYTES = 1_900_000;
 const PHOTO_TOO_BIG = "Photo is too big (max 1.9 MB). Save it as JPEG or make it smaller.";
 const PHOTOS_PER_ORDER = 10;
+// Photos posted in the team chat are stored with task_id 0 (order numbers start at 1).
+const CHAT_PHOTO = 0;
+// Body of a chat message that is only a photo, with no words.
+const PHOTO_ONLY = "📷 Photo";
 const PHOTO_STORAGE_CAP = 1_000_000_000; // stay well inside the free Durable Object storage
 const PHOTO_SIGNATURES: Record<string, (b: Uint8Array) => boolean> = {
   "image/jpeg": (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff,
@@ -199,6 +203,7 @@ const ADDED_COLUMNS = [
   `ALTER TABLE recipes ADD COLUMN notion_url TEXT`,
   `ALTER TABLE recipes ADD COLUMN notion_edited TEXT`,
   `ALTER TABLE staff ADD COLUMN wake_auth TEXT`,
+  `ALTER TABLE messages ADD COLUMN photo_id INTEGER`,
 ];
 
 const NOTION_DAILY = 24 * 3600 * 1000;
@@ -333,6 +338,12 @@ export class Restaurant extends DurableObject<Env> {
       if (declared > PHOTO_MAX_BYTES) throw new HttpError(413, PHOTO_TOO_BIG);
       return json(await this.addAttachment(owner, int(id, "id"), name, mime, new Uint8Array(await req.arrayBuffer())));
     }
+    if (res === "chat" && rawId === "photos" && m === "POST") {
+      const name = clamp(url.searchParams.get("name") || "photo", 80);
+      const mime = (req.headers.get("content-type") ?? "").split(";")[0].trim();
+      if (Number(req.headers.get("content-length") ?? 0) > PHOTO_MAX_BYTES) throw new HttpError(413, PHOTO_TOO_BIG);
+      return json(this.storePhoto(owner, CHAT_PHOTO, name, mime, new Uint8Array(await req.arrayBuffer())));
+    }
     if (res === "attachments" && m === "GET" && rawId) {
       const a = this.getAttachment(int(id, "id"));
       return new Response(a.data, {
@@ -367,7 +378,7 @@ export class Restaurant extends DurableObject<Env> {
       case "PATCH tasks/:id":
         return json(await this.updateTask(owner, int(id, "id"), body));
       case "POST messages":
-        return json(await this.postMessage(owner, body.body, body.task_id));
+        return json(await this.postMessage(owner, body.body, body.task_id, body.photo_id));
       case "POST events/read":
         this.sql.exec("UPDATE events SET read_at=? WHERE read_at IS NULL", now());
         return json({ ok: true });
@@ -722,12 +733,22 @@ export class Restaurant extends DurableObject<Env> {
 
   async addAttachment(actor: Actor, taskId: number, name: string, mime: string, bytes: Uint8Array) {
     const task = this.getTask(taskId);
+    const photo = this.storePhoto(actor, taskId, name, mime, bytes);
+    this.addMessage(actor, `📷 ${actorName(actor)} added a photo: ${name}`, taskId, true);
+    if (task.assignee_id && !(actor.kind === "staff" && actor.staff.id === task.assignee_id)) {
+      await this.ring(task.assignee_id, `${actorName(actor)} added a photo to order #${taskId}: ${task.title}`);
+    }
+    return photo;
+  }
+
+  /** Checks and saves a photo for an order, or for the team chat (taskId CHAT_PHOTO). */
+  private storePhoto(actor: Actor, taskId: number, name: string, mime: string, bytes: Uint8Array) {
     const looksRight = PHOTO_SIGNATURES[mime];
     if (!looksRight) throw new HttpError(415, "Only photos can be added (JPEG, PNG, WebP or GIF)");
     if (!looksRight(bytes)) throw new HttpError(415, "That file isn't the kind of photo it says it is");
     if (bytes.byteLength > PHOTO_MAX_BYTES) throw new HttpError(413, PHOTO_TOO_BIG);
     const count = this.one<{ n: number }>("SELECT COUNT(*) n FROM attachments WHERE task_id=?", taskId)!.n;
-    if (count >= PHOTOS_PER_ORDER) throw new HttpError(400, `An order can have up to ${PHOTOS_PER_ORDER} photos`);
+    if (taskId !== CHAT_PHOTO && count >= PHOTOS_PER_ORDER) throw new HttpError(400, `An order can have up to ${PHOTOS_PER_ORDER} photos`);
     const used = this.one<{ n: number | null }>("SELECT SUM(size) n FROM attachments")!.n ?? 0;
     if (used + bytes.byteLength > PHOTO_STORAGE_CAP) throw new HttpError(507, "Photo storage is full. Delete some old photos first.");
     const row = this.one<{ id: number }>(
@@ -740,10 +761,6 @@ export class Restaurant extends DurableObject<Env> {
       actorName(actor),
       now(),
     )!;
-    this.addMessage(actor, `📷 ${actorName(actor)} added a photo: ${name}`, taskId, true);
-    if (task.assignee_id && !(actor.kind === "staff" && actor.staff.id === task.assignee_id)) {
-      await this.ring(task.assignee_id, `${actorName(actor)} added a photo to order #${taskId}: ${task.title}`);
-    }
     return { id: row.id, name, size: bytes.byteLength };
   }
 
@@ -847,23 +864,32 @@ export class Restaurant extends DurableObject<Env> {
 
   // ---------- Chat ----------
 
-  private addMessage(actor: Actor, body: string, taskId: number | null, system = false) {
+  private addMessage(actor: Actor, body: string, taskId: number | null, system = false, photoId: number | null = null) {
     this.sql.exec(
-      "INSERT INTO messages (task_id, author, author_staff_id, kind, body, created_at) VALUES (?,?,?,?,?,?)",
+      "INSERT INTO messages (task_id, author, author_staff_id, kind, body, photo_id, created_at) VALUES (?,?,?,?,?,?,?)",
       taskId,
       actorName(actor),
       actor.kind === "staff" ? actor.staff.id : null,
       system ? "system" : "note",
       body,
+      photoId,
       now(),
     );
   }
 
-  async postMessage(actor: Actor, bodyIn: unknown, taskIn: unknown) {
-    const body = clamp(str(bodyIn).trim(), 4000);
-    if (!body) throw new HttpError(400, "Message is empty");
+  async postMessage(actor: Actor, bodyIn: unknown, taskIn: unknown, photoIn?: unknown) {
     const taskId = taskIn == null || taskIn === "" ? null : this.getTask(int(taskIn, "task_id")).id;
-    this.addMessage(actor, body, taskId);
+    let photoId: number | null = null;
+    if (photoIn != null && photoIn !== "") {
+      if (taskId) throw new HttpError(400, "Add photos to an order on the order itself");
+      photoId = int(photoIn, "photo_id");
+      const p = this.one<{ task_id: number }>("SELECT task_id FROM attachments WHERE id=?", photoId);
+      if (p?.task_id !== CHAT_PHOTO) throw new HttpError(400, `Photo #${photoId} isn't a team chat photo`);
+      if (this.one("SELECT id FROM messages WHERE photo_id=?", photoId)) throw new HttpError(409, `Photo #${photoId} is already in the chat`);
+    }
+    const body = clamp(str(bodyIn).trim(), 4000) || (photoId ? PHOTO_ONLY : "");
+    if (!body) throw new HttpError(400, "Message is empty");
+    this.addMessage(actor, body, taskId, false, photoId);
     // Only the owner and the chief can wake people with @mentions, so bots can't wake each other in a loop.
     if (isBoss(actor)) {
       for (const s of this.all<Staff>("SELECT * FROM staff WHERE active=1")) {
@@ -878,17 +904,11 @@ export class Restaurant extends DurableObject<Env> {
   readMessages(a: Args) {
     const limit = Math.min(Math.max(Number(a.limit) || 30, 1), 100);
     const taskId = a.task_id == null || a.task_id === "" ? null : int(a.task_id, "task_id");
+    type Row = { id: number; author: string; body: string; photo_id: number | null; created_at: number };
     const rows = taskId
-      ? this.all<{ id: number; author: string; body: string; created_at: number }>(
-          "SELECT id, author, body, kind, created_at FROM messages WHERE task_id=? ORDER BY id DESC LIMIT ?",
-          taskId,
-          limit,
-        )
-      : this.all<{ id: number; author: string; body: string; created_at: number }>(
-          "SELECT id, author, body, kind, created_at FROM messages WHERE task_id IS NULL ORDER BY id DESC LIMIT ?",
-          limit,
-        );
-    return rows.reverse().map((r) => ({ ...r, created_at: new Date(r.created_at).toISOString() }));
+      ? this.all<Row>("SELECT id, author, body, kind, photo_id, created_at FROM messages WHERE task_id=? ORDER BY id DESC LIMIT ?", taskId, limit)
+      : this.all<Row>("SELECT id, author, body, kind, photo_id, created_at FROM messages WHERE task_id IS NULL ORDER BY id DESC LIMIT ?", limit);
+    return rows.reverse().map(withPhoto);
   }
 
   // ---------- Inbox ----------
@@ -910,11 +930,11 @@ export class Restaurant extends DurableObject<Env> {
       ),
       unclaimed_orders: this.all("SELECT id, title, due FROM tasks WHERE assignee_id IS NULL AND status='todo' ORDER BY id LIMIT 10"),
       approval_answers: this.all("SELECT id, action, status, note FROM approvals WHERE staff_id=? AND status!='pending' AND decided_at>?", staff.id, since),
-      new_messages: this.all<{ created_at: number }>(
-        "SELECT id, task_id, author, body, created_at FROM messages WHERE created_at>? AND kind='note' AND (author_staff_id IS NULL OR author_staff_id!=?) ORDER BY id LIMIT 30",
+      new_messages: this.all<{ photo_id: number | null; created_at: number }>(
+        "SELECT id, task_id, author, body, photo_id, created_at FROM messages WHERE created_at>? AND kind='note' AND (author_staff_id IS NULL OR author_staff_id!=?) ORDER BY id LIMIT 30",
         since,
         staff.id,
-      ).map(iso),
+      ).map(withPhoto),
     };
     if (markRead) {
       const t = now();
@@ -1149,6 +1169,12 @@ export class Restaurant extends DurableObject<Env> {
     this.sql.exec("DELETE FROM sessions WHERE expires_at<?", now());
     this.sql.exec("DELETE FROM login_failures WHERE at<?", old);
     this.sql.exec("DELETE FROM outbox WHERE status!='pending' AND created_at<?", old);
+    // Chat photos that were uploaded but never sent with a message.
+    this.sql.exec(
+      "DELETE FROM attachments WHERE task_id=? AND created_at<? AND id NOT IN (SELECT photo_id FROM messages WHERE photo_id IS NOT NULL)",
+      CHAT_PHOTO,
+      now() - DAY,
+    );
     await this.scheduleAlarm();
   }
 
@@ -1195,6 +1221,11 @@ function sessionCookie(req: Request): string | null {
 
 function cookie(value: string, maxAgeSeconds: number): string {
   return `session=${value}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=${Math.floor(maxAgeSeconds)}`;
+}
+
+/** Message for AI staff: ISO time, and photo_id only when there is a photo (open it with view_photo). */
+function withPhoto<T extends { photo_id: number | null; created_at: number }>({ photo_id, created_at, ...rest }: T) {
+  return { ...rest, ...(photo_id ? { photo_id } : {}), created_at: new Date(created_at).toISOString() };
 }
 
 /** Works out a photo's type from its first bytes, so senders don't have to label it. */

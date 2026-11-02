@@ -91,7 +91,13 @@
         <div class="card chat">
           <div id="chat-log" class="chat-log"></div>
           <form id="chat-form" class="chat-form">
-            <input name="body" placeholder="Message the team. Write @Name to wake someone." required maxlength="4000" autocomplete="off">
+            <div id="chat-photo-preview" class="chat-photo-preview" hidden></div>
+            <label class="btn" title="Add a photo (you can also paste or drop one)">📷<span class="sr-only">Add a photo</span><input type="file" name="photo" accept="image/*" hidden></label>
+            <div class="mention-wrap">
+              <input name="body" placeholder="Message the team. Write @Name to wake someone." maxlength="4000" autocomplete="off"
+                role="combobox" aria-autocomplete="list" aria-controls="mention-list" aria-expanded="false">
+              <ul id="mention-list" class="mention-list" role="listbox" hidden></ul>
+            </div>
             <button class="btn primary">Send</button>
           </form>
         </div>

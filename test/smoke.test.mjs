@@ -407,6 +407,34 @@ test("AI staff can add photos: from a link or by sending the file", async () => 
   for (const p of order.json.photos) await api(`attachments/${p.photo_id}`, { method: "DELETE" });
 });
 
+test("photos in the team chat: the owner posts one, AI staff can see it", async () => {
+  const up = await fetch(`${BASE}/api/chat/photos?name=menu.png`, { method: "POST", headers: { cookie, "content-type": "image/png" }, body: TINY_PNG });
+  assert.equal(up.status, 200);
+  const { id } = await up.json();
+  const bad = await fetch(`${BASE}/api/chat/photos`, { method: "POST", headers: { cookie, "content-type": "image/png" }, body: Buffer.from("nope") });
+  assert.equal(bad.status, 415, "only real photos");
+
+  assert.equal((await api("messages", { method: "POST", body: { body: "", photo_id: id } })).status, 200, "a photo alone is a message");
+  assert.equal((await api("messages", { method: "POST", body: { body: "again", photo_id: id } })).status, 409, "a photo is sent once");
+  assert.equal((await api("messages", { method: "POST", body: { body: "", photo_id: 999999 } })).status, 400);
+  assert.equal((await api("messages", { method: "POST", body: { body: "" } })).status, 400, "empty without a photo");
+
+  const state = await api("state");
+  const msg = state.data.messages.find((m) => m.photo_id === id);
+  assert.equal(msg.body, "📷 Photo");
+
+  const chat = await tool(helperKey, "read_messages", {});
+  const seen = chat.json.find((m) => m.photo_id === id);
+  assert.ok(seen, "read_messages shows the photo_id");
+  assert.ok(!("photo_id" in chat.json.find((m) => m.id !== seen.id)), "messages without a photo have no photo_id");
+  const inbox = await tool(helperKey, "check_inbox", { peek: true });
+  assert.ok(inbox.json.new_messages.some((m) => m.photo_id === id), "check_inbox shows it too");
+
+  const { data } = await mcp(helperKey, "tools/call", { name: "view_photo", arguments: { photo_id: id } });
+  assert.match(data.result.content[0].text, /in the team chat, added by Owner/);
+  assert.equal(data.result.content[1].data, TINY_PNG.toString("base64"));
+});
+
 test("renaming staff keeps their key working", async () => {
   const r = await api(`staff/${chief.id}`, { method: "PATCH", body: { name: "Muse", vendor: "Meta Muse" } });
   assert.equal(r.status, 200);

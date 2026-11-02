@@ -32,7 +32,7 @@ const TOOLS: Tool[] = [
   {
     name: "check_inbox",
     description:
-      "Start here every time you are woken or check in. Returns your new notifications, your open orders, unclaimed orders, answers to your approval requests and new chat messages. Marks notifications as read.",
+      "Start here every time you are woken or check in. Returns your new notifications, your open orders, unclaimed orders, answers to your approval requests and new chat messages (a photo_id means the message has a photo: open it with view_photo). Marks notifications as read.",
     inputSchema: obj({ peek: { type: "boolean", description: "true = look without marking anything read" } }),
     run: (r, me, a) => r.checkInbox(me, !a.peek),
   },
@@ -75,12 +75,12 @@ const TOOLS: Tool[] = [
   {
     name: "view_photo",
     description:
-      "Look at one photo attached to an order (get_order lists them). Photos use your quota like a page of text, so only open the ones you need.",
-    inputSchema: obj({ photo_id: n("Photo number from get_order") }, ["photo_id"]),
+      "Look at one photo: attached to an order (get_order lists them), or posted in the team chat (messages with a photo_id). Photos use your quota like a page of text, so only open the ones you need.",
+    inputSchema: obj({ photo_id: n("Photo number from get_order, or a message's photo_id") }, ["photo_id"]),
     run: (r, _me, a) => {
       const p = r.getAttachment(Number(a.photo_id));
       return new McpContent([
-        { type: "text", text: `Photo #${p.id} "${p.name}" on order #${p.task_id}, added by ${p.added_by}:` },
+        { type: "text", text: `Photo #${p.id} "${p.name}" ${p.task_id ? `on order #${p.task_id}` : "in the team chat"}, added by ${p.added_by}:` },
         { type: "image", data: b64(new Uint8Array(p.data)), mimeType: p.mime },
       ]);
     },
@@ -127,7 +127,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "read_messages",
-    description: "Read recent messages from the team chat, or from one order's thread.",
+    description: "Read recent messages from the team chat, or from one order's thread. A message with a photo_id has a photo: open it with view_photo.",
     inputSchema: obj({ order_id: n("Optional order number"), limit: n("How many, up to 100 (default 30)") }),
     run: (r, _me, a) => r.readMessages({ task_id: a.order_id, limit: a.limit }),
   },

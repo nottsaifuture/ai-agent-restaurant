@@ -544,26 +544,188 @@ function renderInbox() {
 
 // ---------- Chat ----------
 
+// Body of a chat message that is only a photo (set by the server).
+const PHOTO_ONLY = "📷 Photo";
+
 function msgHtml(m) {
   if (m.kind === "system") return `<div class="msg system">${esc(m.body)} · ${ago(m.created_at)}</div>`;
   const me = m.author === "Owner" && !m.author_staff_id;
-  return `<div class="msg${me ? " me" : ""}"><div class="who">${esc(me ? "You" : m.author)} · ${ago(m.created_at)}</div><div class="bubble">${esc(m.body)}</div></div>`;
+  const photo = m.photo_id
+    ? `<a href="/api/attachments/${m.photo_id}" target="_blank" rel="noopener"><img class="chat-photo" src="/api/attachments/${m.photo_id}" alt="Photo from ${esc(m.author)}" loading="lazy"></a>`
+    : "";
+  const text = m.photo_id && m.body === PHOTO_ONLY ? "" : `<div class="caption">${esc(m.body)}</div>`;
+  return `<div class="msg${me ? " me" : ""}"><div class="who">${esc(me ? "You" : m.author)} · ${ago(m.created_at)}</div><div class="bubble">${photo}${text}</div></div>`;
 }
 
 function renderChat() {
   const log = $("#chat-log");
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
   log.innerHTML = S.messages.filter((m) => m.task_id == null).map(msgHtml).join("") || `<div class="empty">No messages yet.</div>`;
-  if (atBottom || !renderChat.done) log.scrollTop = log.scrollHeight;
+  if (atBottom || !renderChat.done) {
+    log.scrollTop = log.scrollHeight;
+    // Photos load after the text, so keep the newest message in view once they do.
+    $$("img.chat-photo", log).forEach((img) => img.addEventListener("load", () => (log.scrollTop = log.scrollHeight), { once: true }));
+  }
   renderChat.done = true;
 }
+
+let chatPhoto = null; // { blob, name, preview } waiting to be sent with the next message
 
 $("#chat-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const f = e.target;
-  const body = f.body.value;
+  const body = f.body.value.trim();
+  const photo = chatPhoto;
+  if (!body && !photo) return f.body.focus();
   f.body.value = "";
-  act(() => api("messages", { method: "POST", body: { body } }));
+  setChatPhoto(null);
+  closeMentions();
+  act(async () => {
+    let photo_id;
+    if (photo) {
+      const res = await fetch(`/api/chat/photos?name=${encodeURIComponent(photo.name)}`, {
+        method: "POST",
+        headers: { "content-type": photo.blob.type },
+        body: photo.blob,
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Photo upload failed");
+      photo_id = data.id;
+    }
+    await api("messages", { method: "POST", body: { body, photo_id } });
+  });
+});
+
+async function setChatPhoto(file) {
+  const el = $("#chat-photo-preview");
+  if (!file) {
+    chatPhoto = null;
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  if (!file.type.startsWith("image/")) return toast("Only photos can be added (JPEG, PNG, WebP or GIF)");
+  const blob = await shrinkPhoto(file);
+  const name = (file.name || "photo").replace(/\.\w+$/, "") + ".jpg";
+  const preview = await new Promise((resolve) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.readAsDataURL(blob);
+  });
+  chatPhoto = { blob, name, preview };
+  el.innerHTML = `<img src="${esc(preview)}" alt=""><span class="grow small-text">${esc(name)} · sends with your message</span>
+    <button type="button" class="btn ghost small" aria-label="Remove photo">✕</button>`;
+  el.hidden = false;
+  $("#chat-form").body.focus();
+}
+
+$("#chat-photo-preview").addEventListener("click", (e) => e.target.closest("button") && setChatPhoto(null));
+$("#chat-form").photo.addEventListener("change", (e) => {
+  setChatPhoto(e.target.files[0]);
+  e.target.value = "";
+});
+// Paste a screenshot straight into the message box, or drop a photo on the chat.
+$("#chat-form").body.addEventListener("paste", (e) => {
+  const file = [...(e.clipboardData?.files ?? [])].find((f) => f.type.startsWith("image/"));
+  if (!file) return;
+  e.preventDefault();
+  setChatPhoto(file);
+});
+const chatCard = $(".chat");
+chatCard.addEventListener("dragover", (e) => {
+  if (![...e.dataTransfer.types].includes("Files")) return;
+  e.preventDefault();
+  chatCard.classList.add("dropping");
+});
+chatCard.addEventListener("dragleave", (e) => !chatCard.contains(e.relatedTarget) && chatCard.classList.remove("dropping"));
+chatCard.addEventListener("drop", (e) => {
+  chatCard.classList.remove("dropping");
+  const file = [...e.dataTransfer.files].find((f) => f.type.startsWith("image/"));
+  if (!file) return;
+  e.preventDefault();
+  setChatPhoto(file);
+});
+
+// @name picker: typing "@" shows the team, pick one with the arrows + Enter, Tab or a click.
+const mention = { input: $("#chat-form [name=body]"), list: $("#mention-list"), matches: [], active: 0, start: -1 };
+
+function mentionQuery() {
+  const { input } = mention;
+  const before = input.value.slice(0, input.selectionStart ?? input.value.length);
+  const m = /(?:^|\s)@([^\s@]*)$/u.exec(before);
+  return m ? { text: m[1], start: before.length - m[1].length - 1 } : null;
+}
+
+function updateMentions() {
+  const q = S && mentionQuery();
+  if (!q) return closeMentions();
+  const t = q.text.toLowerCase();
+  const staff = S.staff.filter((s) => s.name.toLowerCase().includes(t));
+  // Names starting with what was typed come first.
+  staff.sort((a, b) => b.name.toLowerCase().startsWith(t) - a.name.toLowerCase().startsWith(t));
+  mention.matches = staff;
+  mention.start = q.start;
+  mention.active = Math.min(mention.active, Math.max(staff.length - 1, 0));
+  mention.list.innerHTML = staff.length
+    ? staff.map((s, i) => `
+      <li role="option" id="mention-${i}" data-i="${i}" class="${i === mention.active ? "active" : ""}" aria-selected="${i === mention.active}">
+        <span class="avatar" data-hue="${hue(s.name)}">${esc(s.name.slice(0, 1).toUpperCase())}</span>
+        <span class="grow"><span class="name">${esc(s.name)}</span> <span class="muted small-text">${esc(s.vendor ?? "")} · ${esc(s.role)}</span></span>
+      </li>`).join("")
+    : `<li class="empty">No one called "${esc(q.text)}"</li>`;
+  $$("[data-hue]", mention.list).forEach((el) => (el.style.background = `hsl(${el.dataset.hue} 55% 45%)`));
+  mention.list.hidden = false;
+  mention.input.setAttribute("aria-expanded", "true");
+  mention.input.setAttribute("aria-activedescendant", staff.length ? `mention-${mention.active}` : "");
+  mention.list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
+}
+
+function closeMentions() {
+  mention.list.hidden = true;
+  mention.matches = [];
+  mention.active = 0;
+  mention.input.setAttribute("aria-expanded", "false");
+  mention.input.removeAttribute("aria-activedescendant");
+}
+
+function pickMention(i) {
+  const s = mention.matches[i];
+  if (!s) return;
+  const { input } = mention;
+  const end = input.selectionStart ?? input.value.length;
+  const after = input.value.slice(end).replace(/^[^\s@]*/u, "");
+  const insert = `@${s.name} `;
+  input.value = input.value.slice(0, mention.start) + insert + after.replace(/^\s/, "");
+  const caret = mention.start + insert.length;
+  input.setSelectionRange(caret, caret);
+  closeMentions();
+  input.focus();
+}
+
+mention.input.addEventListener("input", updateMentions);
+mention.input.addEventListener("click", updateMentions);
+mention.input.addEventListener("blur", () => setTimeout(closeMentions, 100));
+mention.input.addEventListener("keydown", (e) => {
+  if (mention.list.hidden) return;
+  const n = mention.matches.length;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (n) mention.active = (mention.active + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+    updateMentions();
+  } else if ((e.key === "Enter" || e.key === "Tab") && n && !e.isComposing) {
+    e.preventDefault();
+    pickMention(mention.active);
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    closeMentions();
+  }
+});
+// mousedown, not click, so the input keeps focus.
+mention.list.addEventListener("mousedown", (e) => {
+  const li = e.target.closest("li[data-i]");
+  e.preventDefault();
+  if (li) pickMention(Number(li.dataset.i));
 });
 
 // ---------- Recipes ----------
