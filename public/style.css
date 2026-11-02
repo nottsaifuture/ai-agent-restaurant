@@ -227,17 +227,17 @@ dialog::backdrop { background: rgb(20 10 5 / 45%); }
 
 .r-staff { cursor: pointer; outline: none; }
 .r-shadow { fill: rgb(0 0 0 / 18%); }
-.r-apron { fill: rgb(255 255 255 / 85%); }
+
 .r-face { fill: var(--r-face); }
 .r-eye { fill: #2b1d14; }
-.r-hat { fill: var(--r-hat); stroke: rgb(0 0 0 / 12%); stroke-width: .6; }
+
 .r-name { cursor: pointer; font-size: 11px; font-weight: 700; fill: #2b1d14; paint-order: stroke; stroke: #fffaf3; stroke-width: 4px; stroke-linejoin: round; }
 .r-batt { fill: var(--surface); stroke: var(--muted); stroke-width: 1; }
 .r-batt-fill { fill: var(--ok); } .r-batt-fill.mid { fill: var(--warn); } .r-batt-fill.low { fill: var(--bad); }
 .r-bubble-emoji { font-size: 16px; text-anchor: middle; }
 .r-ask circle { fill: var(--accent); }
 .r-ask text { fill: #fff; font-size: 14px; font-weight: 800; }
-.r-zzz { font-size: 12px; font-weight: 700; fill: var(--muted); animation: r-float 2.5s ease-in-out infinite; }
+.r-zzz { font-size: 12px; font-weight: 700; fill: var(--muted); paint-order: stroke; stroke: #fffaf3; stroke-width: 3px; stroke-linejoin: round; animation: r-float 2.5s ease-in-out infinite; }
 .r-staff.cook .r-body, .r-staff.ready .r-body { animation: r-bob .9s ease-in-out infinite alternate; }
 .r-staff.ask .r-body { animation: r-hop 1.4s ease-in-out infinite; }
 .r-staff.sleep .r-body { opacity: .75; transform: translateY(2px); }
@@ -285,3 +285,35 @@ form.view > label > input, form.view > label > select { display: block; width: 1
   .room-svg { max-height: none; min-width: 0; }
   .legend { font-size: 12px; }
 }
+
+/* ---------- Cha chaan teng floor uniform ---------- */
+/* Polo fill comes from the figure (each helper's hue, white for the chief). */
+.r-polo, .r-sleeve { stroke: rgb(0 0 0 / 16%); stroke-width: .55; }
+.r-button { fill: #f5f5f4; stroke: rgb(0 0 0 / 25%); stroke-width: .25; }
+.r-chest-pocket { fill: rgb(0 0 0 / 8%); stroke: rgb(0 0 0 / 20%); stroke-width: .4; }
+.r-trousers { fill: #2c2a28; }
+.r-shoe { fill: #1c1917; }
+.r-apron { fill: #f4efe4; stroke: rgb(90 70 40 / 28%); stroke-width: .45; }
+.r-apron-band { fill: #e4dccb; }
+.r-apron-fold { fill: none; stroke: rgb(90 70 40 / 22%); stroke-width: .4; }
+.r-apron-tie { fill: none; stroke: #c4b79a; stroke-width: .9; stroke-linecap: round; }
+.r-badge { fill: #fffefb; stroke: #78716c; stroke-width: .4; }
+.r-badge-clip { fill: #1e3a5f; stroke: none; }
+.r-badge-line { fill: none; stroke: #a8a29e; stroke-width: .35; stroke-linecap: round; }
+.r-hair { fill: #2b1d14; }
+.r-hair-part { fill: none; stroke: #5b4636; stroke-width: .9; stroke-linecap: round; }
+.r-brow { stroke: #2b1d14; stroke-width: 1.1; stroke-linecap: round; }
+.r-smile { fill: none; stroke: #7c2d12; stroke-width: 1.1; stroke-linecap: round; }
+.r-blush { fill: rgb(244 114 114 / 35%); }
+.r-ear-pen { pointer-events: none; }
+.r-pen { fill: #1c1917; }
+.r-pen-cap { fill: #1d4ed8; }
+.r-pad { fill: #fffef8; stroke: #a8a29e; stroke-width: .45; }
+.r-pad-line { fill: none; stroke: #c4bfb8; stroke-width: .4; stroke-linecap: round; }
+.r-tray { fill: #d4d4d8; stroke: #71717a; stroke-width: .7; }
+.r-tray-shine { fill: rgb(255 255 255 / 65%); }
+.r-cup { fill: #fffdf7; stroke: rgb(0 0 0 / 22%); stroke-width: .5; }
+.r-cup-band { fill: #166534; }
+.r-tea { fill: #b07a4a; }
+.r-cup-handle { fill: none; stroke: #e7e5e4; stroke-width: 1.6; stroke-linecap: round; }
+.r-cashier { pointer-events: none; }
