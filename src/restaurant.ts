@@ -856,9 +856,11 @@ export class Restaurant extends DurableObject<Env> {
       }
     }
     set("updated_at", now());
-    if (a.note != null && str(a.note).trim()) this.addMessage(actor, clamp(str(a.note).trim(), 4000), id);
+    const note = a.note != null ? clamp(str(a.note).trim(), 4000) : "";
+    if (note) this.addMessage(actor, note, id);
     if (changes.length) this.addMessage(actor, `${actorName(actor)}: ${changes.join(", ")}`, id, true);
     if (ringId) await this.ring(ringId, `Order #${id} was handed to you by ${actorName(actor)}: ${task.title}`);
+    if (note) await this.ringMentions(actor, `Order #${id}: ${note}`, ringId);
     return this.getTask(id);
   }
 
@@ -890,15 +892,19 @@ export class Restaurant extends DurableObject<Env> {
     const body = clamp(str(bodyIn).trim(), 4000) || (photoId ? PHOTO_ONLY : "");
     if (!body) throw new HttpError(400, "Message is empty");
     this.addMessage(actor, body, taskId, false, photoId);
-    // Only the owner and the chief can wake people with @mentions, so bots can't wake each other in a loop.
-    if (isBoss(actor)) {
-      for (const s of this.all<Staff>("SELECT * FROM staff WHERE active=1")) {
-        if (actor.kind === "staff" && actor.staff.id === s.id) continue;
-        const re = new RegExp(`@${s.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`, "iu");
-        if (re.test(body)) await this.ring(s.id, `${actorName(actor)} mentioned you: ${clamp(body, 140)}`);
-      }
-    }
+    await this.ringMentions(actor, body);
     return { ok: true };
+  }
+
+  /** Wakes everyone @mentioned in body, except skipId (already being rung). */
+  private async ringMentions(actor: Actor, body: string, skipId?: number | null) {
+    // Only the owner and the chief can wake people with @mentions, so bots can't wake each other in a loop.
+    if (!isBoss(actor)) return;
+    for (const s of this.all<Staff>("SELECT * FROM staff WHERE active=1")) {
+      if ((actor.kind === "staff" && actor.staff.id === s.id) || s.id === skipId) continue;
+      const re = new RegExp(`@${s.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`, "iu");
+      if (re.test(body)) await this.ring(s.id, `${actorName(actor)} mentioned you: ${clamp(body, 140)}`);
+    }
   }
 
   readMessages(a: Args) {

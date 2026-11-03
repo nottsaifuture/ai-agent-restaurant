@@ -338,7 +338,7 @@ function renderTaskPhotos() {
   el.dataset.key = key;
   el.innerHTML = photos.map((p) => `
     <div class="photo">
-      <a href="/api/attachments/${p.id}" target="_blank" rel="noopener"><img src="/api/attachments/${p.id}" alt="${esc(p.name)}" loading="lazy"></a>
+      <a href="/api/attachments/${p.id}" target="_blank" rel="noopener" data-photo><img src="/api/attachments/${p.id}" alt="${esc(p.name)}" loading="lazy"></a>
       <button type="button" class="btn small photo-del" data-act="del-photo" data-id="${p.id}" aria-label="Delete photo">✕</button>
     </div>`).join("") || `<div class="muted small-text">No photos yet. A photo often explains things faster than words.</div>`;
 }
@@ -365,11 +365,16 @@ function openTask(id) {
       <div class="photos" id="task-photos"></div>
       <h3>Thread</h3>
       <div class="thread" id="task-thread"></div>
-      <textarea name="note" rows="2" placeholder="Add a note (write @Name to wake someone in the team chat instead)"></textarea>
+      <div class="mention-wrap">
+        <textarea name="note" rows="2" placeholder="Add a note. Write @Name to wake someone." autocomplete="off"
+          role="combobox" aria-autocomplete="list" aria-controls="note-mention-list" aria-expanded="false"></textarea>
+        <ul id="note-mention-list" class="mention-list" role="listbox" hidden></ul>
+      </div>
       <div class="row"><button class="btn primary">Save</button></div>
     </form>`;
   renderTaskThread();
   renderTaskPhotos();
+  attachMentions($("#task-form [name=note]"), $("#note-mention-list"));
   $("#task-photo-input").addEventListener("change", (e) => {
     const files = [...e.target.files];
     e.target.value = "";
@@ -579,7 +584,7 @@ function msgHtml(m) {
   if (m.kind === "system") return `<div class="msg system">${esc(m.body)} · ${ago(m.created_at)}</div>`;
   const me = m.author === "Owner" && !m.author_staff_id;
   const photo = m.photo_id
-    ? `<a href="/api/attachments/${m.photo_id}" target="_blank" rel="noopener"><img class="chat-photo" src="/api/attachments/${m.photo_id}" alt="Photo from ${esc(m.author)}" loading="lazy"></a>`
+    ? `<a href="/api/attachments/${m.photo_id}" target="_blank" rel="noopener" data-photo><img class="chat-photo" src="/api/attachments/${m.photo_id}" alt="Photo from ${esc(m.author)}" loading="lazy"></a>`
     : "";
   const text = m.photo_id && m.body === PHOTO_ONLY ? "" : `<div class="caption">${linkify(m.body)}</div>`;
   return `<div class="msg${me ? " me" : ""}"><div class="who">${esc(me ? "You" : m.author)} · ${ago(m.created_at)}</div><div class="bubble">${photo}${text}</div></div>`;
@@ -676,85 +681,89 @@ chatCard.addEventListener("drop", (e) => {
 });
 
 // @name picker: typing "@" shows the team, pick one with the arrows + Enter, Tab or a click.
-const mention = { input: $("#chat-form [name=body]"), list: $("#mention-list"), matches: [], active: 0, start: -1 };
+function attachMentions(input, list) {
+  const mention = { input, list, matches: [], active: 0, start: -1 };
 
-function mentionQuery() {
-  const { input } = mention;
-  const before = input.value.slice(0, input.selectionStart ?? input.value.length);
-  const m = /(?:^|\s)@([^\s@]*)$/u.exec(before);
-  return m ? { text: m[1], start: before.length - m[1].length - 1 } : null;
-}
-
-function updateMentions() {
-  const q = S && mentionQuery();
-  if (!q) return closeMentions();
-  const t = q.text.toLowerCase();
-  const staff = S.staff.filter((s) => s.name.toLowerCase().includes(t));
-  // Names starting with what was typed come first.
-  staff.sort((a, b) => b.name.toLowerCase().startsWith(t) - a.name.toLowerCase().startsWith(t));
-  mention.matches = staff;
-  mention.start = q.start;
-  mention.active = Math.min(mention.active, Math.max(staff.length - 1, 0));
-  mention.list.innerHTML = staff.length
-    ? staff.map((s, i) => `
-      <li role="option" id="mention-${i}" data-i="${i}" class="${i === mention.active ? "active" : ""}" aria-selected="${i === mention.active}">
-        <span class="avatar" data-hue="${hue(s.name)}">${esc(s.name.slice(0, 1).toUpperCase())}</span>
-        <span class="grow"><span class="name">${esc(s.name)}</span> <span class="muted small-text">${esc(s.vendor ?? "")} · ${esc(s.role)}</span></span>
-      </li>`).join("")
-    : `<li class="empty">No one called "${esc(q.text)}"</li>`;
-  $$("[data-hue]", mention.list).forEach((el) => (el.style.background = `hsl(${el.dataset.hue} 55% 45%)`));
-  mention.list.hidden = false;
-  mention.input.setAttribute("aria-expanded", "true");
-  mention.input.setAttribute("aria-activedescendant", staff.length ? `mention-${mention.active}` : "");
-  mention.list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
-}
-
-function closeMentions() {
-  mention.list.hidden = true;
-  mention.matches = [];
-  mention.active = 0;
-  mention.input.setAttribute("aria-expanded", "false");
-  mention.input.removeAttribute("aria-activedescendant");
-}
-
-function pickMention(i) {
-  const s = mention.matches[i];
-  if (!s) return;
-  const { input } = mention;
-  const end = input.selectionStart ?? input.value.length;
-  const after = input.value.slice(end).replace(/^[^\s@]*/u, "");
-  const insert = `@${s.name} `;
-  input.value = input.value.slice(0, mention.start) + insert + after.replace(/^\s/, "");
-  const caret = mention.start + insert.length;
-  input.setSelectionRange(caret, caret);
-  closeMentions();
-  input.focus();
-}
-
-mention.input.addEventListener("input", updateMentions);
-mention.input.addEventListener("click", updateMentions);
-mention.input.addEventListener("blur", () => setTimeout(closeMentions, 100));
-mention.input.addEventListener("keydown", (e) => {
-  if (mention.list.hidden) return;
-  const n = mention.matches.length;
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-    e.preventDefault();
-    if (n) mention.active = (mention.active + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
-    updateMentions();
-  } else if ((e.key === "Enter" || e.key === "Tab") && n && !e.isComposing) {
-    e.preventDefault();
-    pickMention(mention.active);
-  } else if (e.key === "Escape") {
-    e.preventDefault();
-    closeMentions();
+  function mentionQuery() {
+    const { input } = mention;
+    const before = input.value.slice(0, input.selectionStart ?? input.value.length);
+    const m = /(?:^|\s)@([^\s@]*)$/u.exec(before);
+    return m ? { text: m[1], start: before.length - m[1].length - 1 } : null;
   }
-});
-// mousedown, not click, so the input keeps focus.
-mention.list.addEventListener("mousedown", (e) => {
-  const li = e.target.closest("li[data-i]");
-  e.preventDefault();
-  if (li) pickMention(Number(li.dataset.i));
-});
+
+  function updateMentions() {
+    const q = S && mentionQuery();
+    if (!q) return closeMentions();
+    const t = q.text.toLowerCase();
+    const staff = S.staff.filter((s) => s.name.toLowerCase().includes(t));
+    // Names starting with what was typed come first.
+    staff.sort((a, b) => b.name.toLowerCase().startsWith(t) - a.name.toLowerCase().startsWith(t));
+    mention.matches = staff;
+    mention.start = q.start;
+    mention.active = Math.min(mention.active, Math.max(staff.length - 1, 0));
+    mention.list.innerHTML = staff.length
+      ? staff.map((s, i) => `
+        <li role="option" id="${list.id}-${i}" data-i="${i}" class="${i === mention.active ? "active" : ""}" aria-selected="${i === mention.active}">
+          <span class="avatar" data-hue="${hue(s.name)}">${esc(s.name.slice(0, 1).toUpperCase())}</span>
+          <span class="grow"><span class="name">${esc(s.name)}</span> <span class="muted small-text">${esc(s.vendor ?? "")} · ${esc(s.role)}</span></span>
+        </li>`).join("")
+      : `<li class="empty">No one called "${esc(q.text)}"</li>`;
+    $$("[data-hue]", mention.list).forEach((el) => (el.style.background = `hsl(${el.dataset.hue} 55% 45%)`));
+    mention.list.hidden = false;
+    mention.input.setAttribute("aria-expanded", "true");
+    mention.input.setAttribute("aria-activedescendant", staff.length ? `${list.id}-${mention.active}` : "");
+    mention.list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
+  }
+
+  function closeMentions() {
+    mention.list.hidden = true;
+    mention.matches = [];
+    mention.active = 0;
+    mention.input.setAttribute("aria-expanded", "false");
+    mention.input.removeAttribute("aria-activedescendant");
+  }
+
+  function pickMention(i) {
+    const s = mention.matches[i];
+    if (!s) return;
+    const { input } = mention;
+    const end = input.selectionStart ?? input.value.length;
+    const after = input.value.slice(end).replace(/^[^\s@]*/u, "");
+    const insert = `@${s.name} `;
+    input.value = input.value.slice(0, mention.start) + insert + after.replace(/^\s/, "");
+    const caret = mention.start + insert.length;
+    input.setSelectionRange(caret, caret);
+    closeMentions();
+    input.focus();
+  }
+
+  mention.input.addEventListener("input", updateMentions);
+  mention.input.addEventListener("click", updateMentions);
+  mention.input.addEventListener("blur", () => setTimeout(closeMentions, 100));
+  mention.input.addEventListener("keydown", (e) => {
+    if (mention.list.hidden) return;
+    const n = mention.matches.length;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (n) mention.active = (mention.active + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      updateMentions();
+    } else if ((e.key === "Enter" || e.key === "Tab") && n && !e.isComposing) {
+      e.preventDefault();
+      pickMention(mention.active);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeMentions();
+    }
+  });
+  // mousedown, not click, so the input keeps focus.
+  mention.list.addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li[data-i]");
+    e.preventDefault();
+    if (li) pickMention(Number(li.dataset.i));
+  });
+}
+
+attachMentions($("#chat-form [name=body]"), $("#mention-list"));
 
 // ---------- Recipes ----------
 
@@ -868,7 +877,23 @@ $("#sources").addEventListener("change", (e) => {
 
 // ---------- Shared click actions ----------
 
+// Photos open in a viewer on top of the page, with a ✕ to get back (a new tab has no way back in the phone app).
+const lightbox = $("#lightbox");
+lightbox.addEventListener("click", (e) => {
+  if (e.target === lightbox || e.target.closest("[data-lightbox-close]")) lightbox.close();
+});
+lightbox.addEventListener("close", () => $("#lightbox img").removeAttribute("src"));
+
 document.addEventListener("click", (e) => {
+  const photo = e.target.closest("a[data-photo]");
+  if (photo && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+    e.preventDefault();
+    const img = photo.querySelector("img");
+    $("#lightbox img").src = photo.href;
+    $("#lightbox img").alt = img?.alt ?? "";
+    lightbox.showModal();
+    return;
+  }
   const copy = e.target.closest("[data-copy]");
   if (copy) {
     const field = copy.parentElement.querySelector("input, textarea");

@@ -258,6 +258,15 @@ test("team chat: chief @mention wakes the helper, helper mention does not loop",
   assert.ok(msgs.json.some((m) => /please look at order 2/.test(m.body)));
 });
 
+test("order notes: owner @mention wakes the helper too", async () => {
+  await sleep(1500); // let earlier rings finish
+  const n = rings.length;
+  await api(`tasks/${orderId}`, { method: "PATCH", body: { note: "@Claude can you check the photos?" } });
+  for (let i = 0; i < 20 && rings.length === n; i++) await sleep(250);
+  assert.equal(rings.length, n + 1, "doorbell should ring once");
+  assert.match(JSON.parse(rings.at(-1).body).reason, new RegExp(`Order #${orderId}: @Claude can you check the photos`));
+});
+
 test("generic webhook: needs the key, routes to the chief, de-duplicates", async () => {
   const src = await api("sources", { method: "POST", body: { name: "Herdr", kind: "generic" } });
   const url = `${BASE}/hook/${src.data.id}`;
