@@ -623,7 +623,7 @@ $("#chat-form").addEventListener("submit", (e) => {
   if (!body && !photo) return f.body.focus();
   f.body.value = "";
   setChatPhoto(null);
-  closeMentions();
+  chatMentions.close();
   act(async () => {
     let photo_id;
     if (photo) {
@@ -772,9 +772,10 @@ function attachMentions(input, list) {
     e.preventDefault();
     if (li) pickMention(Number(li.dataset.i));
   });
+  return { close: closeMentions };
 }
 
-attachMentions($("#chat-form [name=body]"), $("#mention-list"));
+const chatMentions = attachMentions($("#chat-form [name=body]"), $("#mention-list"));
 
 // ---------- Recipes ----------
 
