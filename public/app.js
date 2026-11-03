@@ -4,6 +4,10 @@ const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+// This site's address for copying into other apps. A page opened as "….workers.dev./" carries a trailing dot
+// that other apps can't reach, so it is dropped.
+const ORIGIN = `${location.protocol}//${location.hostname.replace(/\.$/, "")}${location.port ? ":" + location.port : ""}`;
+
 // http(s):// or www. links, minus trailing punctuation like "." or "）" that ends a sentence.
 const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]+/gi;
 const trimUrl = (u) => u.replace(/[.,;:!?'")\]}>，。！？、）」』]+$/, "");
@@ -488,7 +492,7 @@ Start now: call check_inbox and say hello in the team chat with post_message.`;
 }
 
 function showKey(staff, key) {
-  const url = `${location.origin}/mcp/${key}`;
+  const url = `${ORIGIN}/mcp/${key}`;
   const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
   $("#modal-body").innerHTML = `
     <div class="modal-head"><h2>${esc(staff.name)}'s staff key</h2><button class="btn ghost small" data-act="close">Close</button></div>
@@ -498,7 +502,7 @@ function showKey(staff, key) {
     ${local ? `<p class="small-text error">This is a local test address. Only apps on this Mac (like Claude Code) can reach it. Cloud assistants (claude.ai, Grok, Gemini) need the deployed https address.</p>` : ""}
     <p class="small-text muted">If the app asks for a server URL <strong>and</strong> an API key separately (like Meta Muse), use these two instead:</p>
     <label class="small-text muted">Server URL</label>
-    <div class="copy"><input readonly value="${esc(location.origin + "/mcp")}"><button class="btn small" data-copy>Copy</button></div>
+    <div class="copy"><input readonly value="${esc(ORIGIN + "/mcp")}"><button class="btn small" data-copy>Copy</button></div>
     <label class="small-text muted">API key</label>
     <div class="copy"><input readonly value="${esc(key)}"><button class="btn small" data-copy>Copy</button></div>
     <h3>1. Connect it</h3>
@@ -832,7 +836,7 @@ function renderApprovals() {
 // ---------- Sources ----------
 
 function renderSources() {
-  const base = location.origin + "/hook/";
+  const base = ORIGIN + "/hook/";
   $("#sources").innerHTML = S.sources.map((src) => {
     const url = base + src.id;
     let how = "";
