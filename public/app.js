@@ -183,6 +183,9 @@ function paintDynamicStyles() {
   $$("[data-hue]").forEach((el) => (el.style.background = `hsl(${el.dataset.hue} 55% 45%)`));
 }
 
+const ROLE_LABELS = { chief: "Chief", watcher: "Watcher", helper: "Helper" };
+const roleChip = (s) => `<span class="chip${s.role === "chief" ? "" : " plain"}">${ROLE_LABELS[s.role] ?? esc(s.role)}</span>`;
+
 function hue(name) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
@@ -209,7 +212,7 @@ function renderRoom() {
     const order = S.tasks.find((t) => t.assignee_id === s.id && t.status !== "done");
     info.innerHTML = `
       <div class="toolbar">
-        <div><strong>${esc(s.name)}</strong> ${s.role === "chief" ? `<span class="chip">Chief</span>` : `<span class="chip plain">Helper</span>`}
+        <div><strong>${esc(s.name)}</strong> ${roleChip(s)}
           <div class="small-text">${esc(sel.extra)}</div>
           <div class="muted small-text">${esc(s.vendor || "Assistant")} · seen ${ago(s.last_seen)} · quota ${s.quota == null ? "not reported" : s.quota + "% left"}</div></div>
         <div class="row">
@@ -430,7 +433,7 @@ function renderStaff() {
     <div class="card staff-card">
       <div class="staff-head">
         <div class="avatar" data-hue="${hue(s.name)}">${esc(s.name.slice(0, 1).toUpperCase())}</div>
-        <div class="grow"><strong>${esc(s.name)}</strong> ${s.role === "chief" ? `<span class="chip">Chief</span>` : `<span class="chip plain">Helper</span>`}
+        <div class="grow"><strong>${esc(s.name)}</strong> ${roleChip(s)}
           <div class="muted small-text">${esc(s.vendor || "Assistant")} · seen ${ago(s.last_seen)} · ${open} open order${open === 1 ? "" : "s"}</div></div>
       </div>
       <div>
@@ -478,6 +481,8 @@ function lastRing(s) {
 function setupPrompt(s, url) {
   const role = s.role === "chief"
     ? "You are the CHIEF. When woken, read new notifications, turn them into orders, and hand each order to the helper with the most quota left (use list_staff). Save your own quota for thinking and coordinating."
+    : s.role === "watcher"
+    ? "You are the WATCHER. When woken, look over open orders (list_orders) and the team chat for work that is stuck or forgotten, @mention whoever should act to chase them, comment on orders and proofread finished work (orders in 'review') in their thread with post_message + order_id, and post a short report. Your @mentions ring their doorbell (at most once every 2 hours each). You don't do the orders yourself."
     : "You are a HELPER. Do the orders handed to you, post progress with update_order, and move each order to 'review' when it is finished.";
   return `You now work at my AI Agent Restaurant as "${s.name}".
 The restaurant is an MCP server: ${url}
@@ -526,13 +531,15 @@ function showEditStaff(s) {
     <form id="edit-staff-form" class="view">
       <label class="small-text">Name<input name="name" value="${esc(s.name)}" required maxlength="32"></label>
       <label class="small-text">Assistant<select name="vendor">${vendors.map((v) => `<option${v === s.vendor ? " selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+      <label class="small-text">Role<select name="role">${Object.entries(ROLE_LABELS).map(([k, l]) => `<option value="${k}"${k === s.role ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+      <p class="small-text muted">Chief leads the team (only one). Watcher chases stuck work: its @mentions ring doorbells, at most once every 2 hours per person.</p>
       <div class="row"><button class="btn primary">Save</button></div>
     </form>`;
   $("#edit-staff-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const f = e.target;
     act(async () => {
-      await api(`staff/${s.id}`, { method: "PATCH", body: { name: f.name.value, vendor: f.vendor.value } });
+      await api(`staff/${s.id}`, { method: "PATCH", body: { name: f.name.value, vendor: f.vendor.value, role: f.role.value } });
       $("#modal").close();
     }, "Saved");
   });

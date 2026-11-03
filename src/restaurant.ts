@@ -24,7 +24,7 @@ export interface Staff {
   id: number;
   name: string;
   vendor: string;
-  role: "chief" | "helper";
+  role: "chief" | "watcher" | "helper";
   token_hash: string;
   wake_url: string | null;
   wake_secret: string | null;
@@ -68,7 +68,9 @@ type Args = Record<string, unknown>;
 
 const STATUSES = ["todo", "doing", "review", "done"] as const;
 type Status = (typeof STATUSES)[number];
-const ROLES = ["chief", "helper"];
+const ROLES = ["chief", "watcher", "helper"];
+// A watcher's @mention rings the same person at most once in this window, so hourly patrols can't flood anyone.
+const CHASE_GAP = 2 * 60 * 60 * 1000;
 const RETRY_SECONDS = [5, 20, 80];
 const SESSION_MS = 30 * 24 * 3600 * 1000;
 const DAY = 24 * 3600 * 1000;
@@ -163,6 +165,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS deliveries (id TEXT PRIMARY KEY, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
   `CREATE TABLE IF NOT EXISTS login_failures (at INTEGER NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS chases (watcher_id INTEGER NOT NULL, staff_id INTEGER NOT NULL, at INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS attachments (
     id INTEGER PRIMARY KEY AUTOINCREMENT, task_id INTEGER NOT NULL,
     name TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, data BLOB NOT NULL,
@@ -597,7 +600,7 @@ export class Restaurant extends DurableObject<Env> {
   private async hire(a: Args) {
     const name = this.checkName(a.name);
     const role = str(a.role || "helper");
-    if (!ROLES.includes(role)) throw new HttpError(400, "Role must be chief or helper");
+    if (!ROLES.includes(role)) throw new HttpError(400, "Role must be chief, watcher or helper");
     const vendor = clamp(str(a.vendor).trim(), 40);
     const key = "rk_" + randomToken(24);
     const hash = await sha256Hex(key);
@@ -630,7 +633,7 @@ export class Restaurant extends DurableObject<Env> {
     }
     if (a.role !== undefined) {
       const role = str(a.role);
-      if (!ROLES.includes(role)) throw new HttpError(400, "Role must be chief or helper");
+      if (!ROLES.includes(role)) throw new HttpError(400, "Role must be chief, watcher or helper");
       if (role === "chief") this.sql.exec("UPDATE staff SET role='helper' WHERE role='chief'");
       this.sql.exec("UPDATE staff SET role=? WHERE id=?", role, id);
     }
@@ -898,12 +901,19 @@ export class Restaurant extends DurableObject<Env> {
 
   /** Wakes everyone @mentioned in body, except skipId (already being rung). */
   private async ringMentions(actor: Actor, body: string, skipId?: number | null) {
-    // Only the owner and the chief can wake people with @mentions, so bots can't wake each other in a loop.
-    if (!isBoss(actor)) return;
+    // Only the owner, the chief and watchers can wake people with @mentions, so bots can't wake each other in a loop.
+    const watcher = actor.kind === "staff" && actor.staff.role === "watcher" ? actor.staff : null;
+    if (!isBoss(actor) && !watcher) return;
     for (const s of this.all<Staff>("SELECT * FROM staff WHERE active=1")) {
       if ((actor.kind === "staff" && actor.staff.id === s.id) || s.id === skipId) continue;
       const re = new RegExp(`@${s.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}_])`, "iu");
-      if (re.test(body)) await this.ring(s.id, `${actorName(actor)} mentioned you: ${clamp(body, 140)}`);
+      if (!re.test(body)) continue;
+      if (watcher) {
+        if (this.one("SELECT 1 FROM chases WHERE watcher_id=? AND staff_id=? AND at>?", watcher.id, s.id, now() - CHASE_GAP)) continue;
+        this.sql.exec("DELETE FROM chases WHERE at<=?", now() - CHASE_GAP);
+        this.sql.exec("INSERT INTO chases (watcher_id, staff_id, at) VALUES (?,?,?)", watcher.id, s.id, now());
+      }
+      await this.ring(s.id, `${actorName(actor)} mentioned you: ${clamp(body, 140)}`);
     }
   }
 
