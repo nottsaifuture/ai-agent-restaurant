@@ -258,6 +258,36 @@ test("team chat: chief @mention wakes the helper, helper mention does not loop",
   assert.ok(msgs.json.some((m) => /please look at order 2/.test(m.body)));
 });
 
+test("order notes: owner @mention wakes the helper too", async () => {
+  await sleep(1500); // let earlier rings finish
+  const n = rings.length;
+  await api(`tasks/${orderId}`, { method: "PATCH", body: { note: "@Claude can you check the photos?" } });
+  for (let i = 0; i < 20 && rings.length === n; i++) await sleep(250);
+  assert.equal(rings.length, n + 1, "doorbell should ring once");
+  assert.match(JSON.parse(rings.at(-1).body).reason, new RegExp(`Order #${orderId}: @Claude can you check the photos`));
+});
+
+test("watcher: @mention chases someone, at most once every 2 hours each", async () => {
+  assert.equal((await api("staff", { method: "POST", body: { name: "Bad", role: "boss" } })).status, 400);
+  const w = await api("staff", { method: "POST", body: { name: "千里馬", vendor: "Claude", role: "watcher" } });
+  assert.equal(w.data.staff.role, "watcher");
+  const watcherKey = w.data.key;
+  const init = await mcp(watcherKey, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } });
+  assert.match(init.data.result.instructions, /WATCHER/);
+  await sleep(1500); // let earlier rings finish
+  let n = rings.length;
+  await tool(watcherKey, "post_message", { body: "@Claude order still in progress, any update?" });
+  for (let i = 0; i < 20 && rings.length === n; i++) await sleep(250);
+  assert.equal(rings.length, n + 1, "first chase rings");
+  assert.match(JSON.parse(rings.at(-1).body).reason, /千里馬 mentioned you/);
+  await sleep(1500);
+  n = rings.length;
+  await tool(watcherKey, "post_message", { body: "@Claude reminder again" });
+  await sleep(2000);
+  assert.equal(rings.length, n, "second chase within 2 hours does not ring");
+  await api(`staff/${w.data.staff.id}`, { method: "DELETE" });
+});
+
 test("generic webhook: needs the key, routes to the chief, de-duplicates", async () => {
   const src = await api("sources", { method: "POST", body: { name: "Herdr", kind: "generic" } });
   const url = `${BASE}/hook/${src.data.id}`;

@@ -4,6 +4,10 @@ const $ = (sel, el = document) => el.querySelector(sel);
 const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
+// This site's address for copying into other apps. A page opened as "….workers.dev./" carries a trailing dot
+// that other apps can't reach, so it is dropped.
+const ORIGIN = `${location.protocol}//${location.hostname.replace(/\.$/, "")}${location.port ? ":" + location.port : ""}`;
+
 // http(s):// or www. links, minus trailing punctuation like "." or "）" that ends a sentence.
 const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"'`\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]+/gi;
 const trimUrl = (u) => u.replace(/[.,;:!?'")\]}>，。！？、）」』]+$/, "");
@@ -179,6 +183,9 @@ function paintDynamicStyles() {
   $$("[data-hue]").forEach((el) => (el.style.background = `hsl(${el.dataset.hue} 55% 45%)`));
 }
 
+const ROLE_LABELS = { chief: "Chief", watcher: "Watcher", helper: "Helper" };
+const roleChip = (s) => `<span class="chip${s.role === "chief" ? "" : " plain"}">${ROLE_LABELS[s.role] ?? esc(s.role)}</span>`;
+
 function hue(name) {
   let h = 0;
   for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
@@ -205,7 +212,7 @@ function renderRoom() {
     const order = S.tasks.find((t) => t.assignee_id === s.id && t.status !== "done");
     info.innerHTML = `
       <div class="toolbar">
-        <div><strong>${esc(s.name)}</strong> ${s.role === "chief" ? `<span class="chip">Chief</span>` : `<span class="chip plain">Helper</span>`}
+        <div><strong>${esc(s.name)}</strong> ${roleChip(s)}
           <div class="small-text">${esc(sel.extra)}</div>
           <div class="muted small-text">${esc(s.vendor || "Assistant")} · seen ${ago(s.last_seen)} · quota ${s.quota == null ? "not reported" : s.quota + "% left"}</div></div>
         <div class="row">
@@ -338,7 +345,7 @@ function renderTaskPhotos() {
   el.dataset.key = key;
   el.innerHTML = photos.map((p) => `
     <div class="photo">
-      <a href="/api/attachments/${p.id}" target="_blank" rel="noopener"><img src="/api/attachments/${p.id}" alt="${esc(p.name)}" loading="lazy"></a>
+      <a href="/api/attachments/${p.id}" target="_blank" rel="noopener" data-photo><img src="/api/attachments/${p.id}" alt="${esc(p.name)}" loading="lazy"></a>
       <button type="button" class="btn small photo-del" data-act="del-photo" data-id="${p.id}" aria-label="Delete photo">✕</button>
     </div>`).join("") || `<div class="muted small-text">No photos yet. A photo often explains things faster than words.</div>`;
 }
@@ -365,11 +372,16 @@ function openTask(id) {
       <div class="photos" id="task-photos"></div>
       <h3>Thread</h3>
       <div class="thread" id="task-thread"></div>
-      <textarea name="note" rows="2" placeholder="Add a note (write @Name to wake someone in the team chat instead)"></textarea>
+      <div class="mention-wrap">
+        <textarea name="note" rows="2" placeholder="Add a note. Write @Name to wake someone." autocomplete="off"
+          role="combobox" aria-autocomplete="list" aria-controls="note-mention-list" aria-expanded="false"></textarea>
+        <ul id="note-mention-list" class="mention-list" role="listbox" hidden></ul>
+      </div>
       <div class="row"><button class="btn primary">Save</button></div>
     </form>`;
   renderTaskThread();
   renderTaskPhotos();
+  attachMentions($("#task-form [name=note]"), $("#note-mention-list"));
   $("#task-photo-input").addEventListener("change", (e) => {
     const files = [...e.target.files];
     e.target.value = "";
@@ -421,7 +433,7 @@ function renderStaff() {
     <div class="card staff-card">
       <div class="staff-head">
         <div class="avatar" data-hue="${hue(s.name)}">${esc(s.name.slice(0, 1).toUpperCase())}</div>
-        <div class="grow"><strong>${esc(s.name)}</strong> ${s.role === "chief" ? `<span class="chip">Chief</span>` : `<span class="chip plain">Helper</span>`}
+        <div class="grow"><strong>${esc(s.name)}</strong> ${roleChip(s)}
           <div class="muted small-text">${esc(s.vendor || "Assistant")} · seen ${ago(s.last_seen)} · ${open} open order${open === 1 ? "" : "s"}</div></div>
       </div>
       <div>
@@ -469,6 +481,8 @@ function lastRing(s) {
 function setupPrompt(s, url) {
   const role = s.role === "chief"
     ? "You are the CHIEF. When woken, read new notifications, turn them into orders, and hand each order to the helper with the most quota left (use list_staff). Save your own quota for thinking and coordinating."
+    : s.role === "watcher"
+    ? "You are the WATCHER. When woken, look over open orders (list_orders) and the team chat for work that is stuck or forgotten, @mention whoever should act to chase them, comment on orders and proofread finished work (orders in 'review') in their thread with post_message + order_id, and post a short report. Your @mentions ring their doorbell (at most once every 2 hours each). You don't do the orders yourself."
     : "You are a HELPER. Do the orders handed to you, post progress with update_order, and move each order to 'review' when it is finished.";
   return `You now work at my AI Agent Restaurant as "${s.name}".
 The restaurant is an MCP server: ${url}
@@ -483,7 +497,7 @@ Start now: call check_inbox and say hello in the team chat with post_message.`;
 }
 
 function showKey(staff, key) {
-  const url = `${location.origin}/mcp/${key}`;
+  const url = `${ORIGIN}/mcp/${key}`;
   const local = /^(localhost|127\.|\[::1\])/.test(location.hostname);
   $("#modal-body").innerHTML = `
     <div class="modal-head"><h2>${esc(staff.name)}'s staff key</h2><button class="btn ghost small" data-act="close">Close</button></div>
@@ -493,7 +507,7 @@ function showKey(staff, key) {
     ${local ? `<p class="small-text error">This is a local test address. Only apps on this Mac (like Claude Code) can reach it. Cloud assistants (claude.ai, Grok, Gemini) need the deployed https address.</p>` : ""}
     <p class="small-text muted">If the app asks for a server URL <strong>and</strong> an API key separately (like Meta Muse), use these two instead:</p>
     <label class="small-text muted">Server URL</label>
-    <div class="copy"><input readonly value="${esc(location.origin + "/mcp")}"><button class="btn small" data-copy>Copy</button></div>
+    <div class="copy"><input readonly value="${esc(ORIGIN + "/mcp")}"><button class="btn small" data-copy>Copy</button></div>
     <label class="small-text muted">API key</label>
     <div class="copy"><input readonly value="${esc(key)}"><button class="btn small" data-copy>Copy</button></div>
     <h3>1. Connect it</h3>
@@ -517,13 +531,15 @@ function showEditStaff(s) {
     <form id="edit-staff-form" class="view">
       <label class="small-text">Name<input name="name" value="${esc(s.name)}" required maxlength="32"></label>
       <label class="small-text">Assistant<select name="vendor">${vendors.map((v) => `<option${v === s.vendor ? " selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+      <label class="small-text">Role<select name="role">${Object.entries(ROLE_LABELS).map(([k, l]) => `<option value="${k}"${k === s.role ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+      <p class="small-text muted">Chief leads the team (only one). Watcher chases stuck work: its @mentions ring doorbells, at most once every 2 hours per person.</p>
       <div class="row"><button class="btn primary">Save</button></div>
     </form>`;
   $("#edit-staff-form").addEventListener("submit", (e) => {
     e.preventDefault();
     const f = e.target;
     act(async () => {
-      await api(`staff/${s.id}`, { method: "PATCH", body: { name: f.name.value, vendor: f.vendor.value } });
+      await api(`staff/${s.id}`, { method: "PATCH", body: { name: f.name.value, vendor: f.vendor.value, role: f.role.value } });
       $("#modal").close();
     }, "Saved");
   });
@@ -579,7 +595,7 @@ function msgHtml(m) {
   if (m.kind === "system") return `<div class="msg system">${esc(m.body)} · ${ago(m.created_at)}</div>`;
   const me = m.author === "Owner" && !m.author_staff_id;
   const photo = m.photo_id
-    ? `<a href="/api/attachments/${m.photo_id}" target="_blank" rel="noopener"><img class="chat-photo" src="/api/attachments/${m.photo_id}" alt="Photo from ${esc(m.author)}" loading="lazy"></a>`
+    ? `<a href="/api/attachments/${m.photo_id}" target="_blank" rel="noopener" data-photo><img class="chat-photo" src="/api/attachments/${m.photo_id}" alt="Photo from ${esc(m.author)}" loading="lazy"></a>`
     : "";
   const text = m.photo_id && m.body === PHOTO_ONLY ? "" : `<div class="caption">${linkify(m.body)}</div>`;
   return `<div class="msg${me ? " me" : ""}"><div class="who">${esc(me ? "You" : m.author)} · ${ago(m.created_at)}</div><div class="bubble">${photo}${text}</div></div>`;
@@ -607,7 +623,7 @@ $("#chat-form").addEventListener("submit", (e) => {
   if (!body && !photo) return f.body.focus();
   f.body.value = "";
   setChatPhoto(null);
-  closeMentions();
+  chatMentions.close();
   act(async () => {
     let photo_id;
     if (photo) {
@@ -676,85 +692,90 @@ chatCard.addEventListener("drop", (e) => {
 });
 
 // @name picker: typing "@" shows the team, pick one with the arrows + Enter, Tab or a click.
-const mention = { input: $("#chat-form [name=body]"), list: $("#mention-list"), matches: [], active: 0, start: -1 };
+function attachMentions(input, list) {
+  const mention = { input, list, matches: [], active: 0, start: -1 };
 
-function mentionQuery() {
-  const { input } = mention;
-  const before = input.value.slice(0, input.selectionStart ?? input.value.length);
-  const m = /(?:^|\s)@([^\s@]*)$/u.exec(before);
-  return m ? { text: m[1], start: before.length - m[1].length - 1 } : null;
-}
-
-function updateMentions() {
-  const q = S && mentionQuery();
-  if (!q) return closeMentions();
-  const t = q.text.toLowerCase();
-  const staff = S.staff.filter((s) => s.name.toLowerCase().includes(t));
-  // Names starting with what was typed come first.
-  staff.sort((a, b) => b.name.toLowerCase().startsWith(t) - a.name.toLowerCase().startsWith(t));
-  mention.matches = staff;
-  mention.start = q.start;
-  mention.active = Math.min(mention.active, Math.max(staff.length - 1, 0));
-  mention.list.innerHTML = staff.length
-    ? staff.map((s, i) => `
-      <li role="option" id="mention-${i}" data-i="${i}" class="${i === mention.active ? "active" : ""}" aria-selected="${i === mention.active}">
-        <span class="avatar" data-hue="${hue(s.name)}">${esc(s.name.slice(0, 1).toUpperCase())}</span>
-        <span class="grow"><span class="name">${esc(s.name)}</span> <span class="muted small-text">${esc(s.vendor ?? "")} · ${esc(s.role)}</span></span>
-      </li>`).join("")
-    : `<li class="empty">No one called "${esc(q.text)}"</li>`;
-  $$("[data-hue]", mention.list).forEach((el) => (el.style.background = `hsl(${el.dataset.hue} 55% 45%)`));
-  mention.list.hidden = false;
-  mention.input.setAttribute("aria-expanded", "true");
-  mention.input.setAttribute("aria-activedescendant", staff.length ? `mention-${mention.active}` : "");
-  mention.list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
-}
-
-function closeMentions() {
-  mention.list.hidden = true;
-  mention.matches = [];
-  mention.active = 0;
-  mention.input.setAttribute("aria-expanded", "false");
-  mention.input.removeAttribute("aria-activedescendant");
-}
-
-function pickMention(i) {
-  const s = mention.matches[i];
-  if (!s) return;
-  const { input } = mention;
-  const end = input.selectionStart ?? input.value.length;
-  const after = input.value.slice(end).replace(/^[^\s@]*/u, "");
-  const insert = `@${s.name} `;
-  input.value = input.value.slice(0, mention.start) + insert + after.replace(/^\s/, "");
-  const caret = mention.start + insert.length;
-  input.setSelectionRange(caret, caret);
-  closeMentions();
-  input.focus();
-}
-
-mention.input.addEventListener("input", updateMentions);
-mention.input.addEventListener("click", updateMentions);
-mention.input.addEventListener("blur", () => setTimeout(closeMentions, 100));
-mention.input.addEventListener("keydown", (e) => {
-  if (mention.list.hidden) return;
-  const n = mention.matches.length;
-  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-    e.preventDefault();
-    if (n) mention.active = (mention.active + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
-    updateMentions();
-  } else if ((e.key === "Enter" || e.key === "Tab") && n && !e.isComposing) {
-    e.preventDefault();
-    pickMention(mention.active);
-  } else if (e.key === "Escape") {
-    e.preventDefault();
-    closeMentions();
+  function mentionQuery() {
+    const { input } = mention;
+    const before = input.value.slice(0, input.selectionStart ?? input.value.length);
+    const m = /(?:^|\s)@([^\s@]*)$/u.exec(before);
+    return m ? { text: m[1], start: before.length - m[1].length - 1 } : null;
   }
-});
-// mousedown, not click, so the input keeps focus.
-mention.list.addEventListener("mousedown", (e) => {
-  const li = e.target.closest("li[data-i]");
-  e.preventDefault();
-  if (li) pickMention(Number(li.dataset.i));
-});
+
+  function updateMentions() {
+    const q = S && mentionQuery();
+    if (!q) return closeMentions();
+    const t = q.text.toLowerCase();
+    const staff = S.staff.filter((s) => s.name.toLowerCase().includes(t));
+    // Names starting with what was typed come first.
+    staff.sort((a, b) => b.name.toLowerCase().startsWith(t) - a.name.toLowerCase().startsWith(t));
+    mention.matches = staff;
+    mention.start = q.start;
+    mention.active = Math.min(mention.active, Math.max(staff.length - 1, 0));
+    mention.list.innerHTML = staff.length
+      ? staff.map((s, i) => `
+        <li role="option" id="${list.id}-${i}" data-i="${i}" class="${i === mention.active ? "active" : ""}" aria-selected="${i === mention.active}">
+          <span class="avatar" data-hue="${hue(s.name)}">${esc(s.name.slice(0, 1).toUpperCase())}</span>
+          <span class="grow"><span class="name">${esc(s.name)}</span> <span class="muted small-text">${esc(s.vendor ?? "")} · ${esc(s.role)}</span></span>
+        </li>`).join("")
+      : `<li class="empty">No one called "${esc(q.text)}"</li>`;
+    $$("[data-hue]", mention.list).forEach((el) => (el.style.background = `hsl(${el.dataset.hue} 55% 45%)`));
+    mention.list.hidden = false;
+    mention.input.setAttribute("aria-expanded", "true");
+    mention.input.setAttribute("aria-activedescendant", staff.length ? `${list.id}-${mention.active}` : "");
+    mention.list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
+  }
+
+  function closeMentions() {
+    mention.list.hidden = true;
+    mention.matches = [];
+    mention.active = 0;
+    mention.input.setAttribute("aria-expanded", "false");
+    mention.input.removeAttribute("aria-activedescendant");
+  }
+
+  function pickMention(i) {
+    const s = mention.matches[i];
+    if (!s) return;
+    const { input } = mention;
+    const end = input.selectionStart ?? input.value.length;
+    const after = input.value.slice(end).replace(/^[^\s@]*/u, "");
+    const insert = `@${s.name} `;
+    input.value = input.value.slice(0, mention.start) + insert + after.replace(/^\s/, "");
+    const caret = mention.start + insert.length;
+    input.setSelectionRange(caret, caret);
+    closeMentions();
+    input.focus();
+  }
+
+  mention.input.addEventListener("input", updateMentions);
+  mention.input.addEventListener("click", updateMentions);
+  mention.input.addEventListener("blur", () => setTimeout(closeMentions, 100));
+  mention.input.addEventListener("keydown", (e) => {
+    if (mention.list.hidden) return;
+    const n = mention.matches.length;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (n) mention.active = (mention.active + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+      updateMentions();
+    } else if ((e.key === "Enter" || e.key === "Tab") && n && !e.isComposing) {
+      e.preventDefault();
+      pickMention(mention.active);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeMentions();
+    }
+  });
+  // mousedown, not click, so the input keeps focus.
+  mention.list.addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li[data-i]");
+    e.preventDefault();
+    if (li) pickMention(Number(li.dataset.i));
+  });
+  return { close: closeMentions };
+}
+
+const chatMentions = attachMentions($("#chat-form [name=body]"), $("#mention-list"));
 
 // ---------- Recipes ----------
 
@@ -823,7 +844,7 @@ function renderApprovals() {
 // ---------- Sources ----------
 
 function renderSources() {
-  const base = location.origin + "/hook/";
+  const base = ORIGIN + "/hook/";
   $("#sources").innerHTML = S.sources.map((src) => {
     const url = base + src.id;
     let how = "";
@@ -868,7 +889,23 @@ $("#sources").addEventListener("change", (e) => {
 
 // ---------- Shared click actions ----------
 
+// Photos open in a viewer on top of the page, with a ✕ to get back (a new tab has no way back in the phone app).
+const lightbox = $("#lightbox");
+lightbox.addEventListener("click", (e) => {
+  if (e.target === lightbox || e.target.closest("[data-lightbox-close]")) lightbox.close();
+});
+lightbox.addEventListener("close", () => $("#lightbox img").removeAttribute("src"));
+
 document.addEventListener("click", (e) => {
+  const photo = e.target.closest("a[data-photo]");
+  if (photo && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
+    e.preventDefault();
+    const img = photo.querySelector("img");
+    $("#lightbox img").src = photo.href;
+    $("#lightbox img").alt = img?.alt ?? "";
+    lightbox.showModal();
+    return;
+  }
   const copy = e.target.closest("[data-copy]");
   if (copy) {
     const field = copy.parentElement.querySelector("input, textarea");

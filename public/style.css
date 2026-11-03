@@ -177,6 +177,10 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 /* Modal */
 dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); padding: 0; width: min(680px, calc(100vw - 32px)); max-height: calc(100vh - 32px); }
 dialog::backdrop { background: rgb(20 10 5 / 45%); }
+.lightbox { width: fit-content; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); background: transparent; border: 0; overflow: visible; }
+.lightbox::backdrop { background: rgb(0 0 0 / 80%); }
+.lightbox img { display: block; max-width: calc(100vw - 32px); max-height: calc(100vh - 32px); object-fit: contain; border-radius: var(--radius); }
+.lightbox-close { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgb(255 255 255 / 90%); color: #111; font-size: 20px; cursor: pointer; box-shadow: 0 2px 8px rgb(0 0 0 / 40%); }
 #modal-body { padding: 20px; display: grid; gap: 14px; }
 .modal-head { display: flex; justify-content: space-between; gap: 12px; align-items: start; }
 .thread { display: grid; gap: 8px; max-height: 300px; overflow-y: auto; }

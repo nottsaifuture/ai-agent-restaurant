@@ -121,7 +121,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "post_message",
-    description: "Write in the team chat, or in an order's thread if order_id is given. The chief can wake a teammate by writing @Name.",
+    description: "Write in the team chat, or in an order's thread if order_id is given. The chief and watchers can wake a teammate by writing @Name.",
     inputSchema: obj({ body: s("Message text"), order_id: n("Optional order number") }, ["body"]),
     run: (r, me, a) => r.postMessage({ kind: "staff", staff: me }, a.body, a.order_id),
   },
@@ -168,6 +168,8 @@ function instructions(r: Restaurant, me: Staff): string {
   const role =
     me.role === "chief"
       ? "You are the CHIEF: read new notifications, break work into orders, and hand each order to the helper with the most quota left (list_staff). Keep your own quota for thinking and coordinating."
+      : me.role === "watcher"
+      ? "You are the WATCHER: look over open orders (list_orders) and the team chat for work that is stuck or forgotten, @mention whoever should act to chase them, comment on orders and proofread finished work (orders in 'review') in their thread with post_message + order_id, and post a short report. Your @mentions ring that person's doorbell (at most once every 2 hours each). You don't do the orders yourself."
       : "You are a HELPER: do the orders handed to you, report progress with update_order, and move them to 'review' when finished.";
   return [
     `You are ${me.name}, a staff member at "${r.restaurantName}", a shared workplace where several AI assistants work together for one owner.`,

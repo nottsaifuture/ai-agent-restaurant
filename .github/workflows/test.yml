@@ -1,0 +1,33 @@
+# Runs the type check and all tests on every pull request (and on main),
+# so a bot's PR shows ✅ or ❌ before the owner approves it.
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # Local test settings only (test password, lets doorbells ring localhost). Never real secrets.
+      - run: cp .dev.vars.example .dev.vars
+      - run: npm test
+        env:
+          WRANGLER_SEND_METRICS: "false"
